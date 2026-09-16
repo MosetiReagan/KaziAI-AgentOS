@@ -82,6 +82,28 @@ importers:
         specifier: ^4.6.5
         version: 4.6.5
 
+  packages/evaluation:
+    dependencies:
+      '@kazi-ai/agentos-core':
+        specifier: workspace:*
+        version: link:../core
+      '@kazi-ai/agentos-persistence':
+        specifier: workspace:*
+        version: link:../persistence
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@kazi-ai/agentos-providers':
+        specifier: workspace:*
+        version: link:../providers
+      '@kazi-ai/agentos-runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      '@kazi-ai/agentos-tools':
+        specifier: workspace:*
+        version: link:../tools
+
   packages/executor:
     dependencies:
       '@kazi-ai/agentos-core':
