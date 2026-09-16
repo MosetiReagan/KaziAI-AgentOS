@@ -5,6 +5,7 @@ import {
   toAgentError,
   ProviderError,
   ToolTimeoutError,
+  ToolExecutionError,
   ValidationError,
   newRunId,
   type Checkpoint,
@@ -317,6 +318,32 @@ describe('DefaultRecoveryEngine', () => {
     const result = await engine.execute(decision, context);
     expect(result.applied).toBe(true);
     expect(switched).toEqual(['ollama/llama-local']);
+  });
+
+  it('never retries a failure the error itself declares non-retryable', async () => {
+    const engine = new DefaultRecoveryEngine({ awaitBackoff: false });
+    // `tool_failure` defaults to retry_with_backoff, but a missing file cannot
+    // appear by waiting: the error says so, and the policy must respect it.
+    const error = new ToolExecutionError('filesystem.read', 'File not found: greeting.txt', {
+      code: 'tool.file_not_found',
+      retryable: false,
+      idempotency: 'idempotent',
+    });
+    const context = contextFor(error);
+    const decision = await engine.decide(context);
+    expect(decision.strategy).toBe('replan');
+    expect(decision.reason).toMatch(/not retryable/);
+    expect(decision.delayMs).toBeUndefined();
+  });
+
+  it('still retries the same failure kind when the error is retryable', async () => {
+    const engine = new DefaultRecoveryEngine({ awaitBackoff: false });
+    const error = new ToolExecutionError('filesystem.read', 'transient io error', {
+      code: 'tool.execution_failed',
+      retryable: true,
+    });
+    const decision = await engine.decide(contextFor(error));
+    expect(decision.strategy).toBe('retry_with_backoff');
   });
 
   it('falls back to a bounded retry when no fallback provider exists', async () => {

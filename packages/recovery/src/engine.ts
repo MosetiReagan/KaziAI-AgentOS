@@ -126,6 +126,17 @@ export class DefaultRecoveryEngine implements RecoveryEngine {
       }
     }
 
+    // An error that declares itself non-retryable must not be retried, whatever
+    // the policy map says: repeating it cannot succeed and only burns budget
+    // (spec §37). Recovery must change the approach instead.
+    if (classification.retryable === false && RETRY_STRATEGIES.has(policy.strategy)) {
+      return this.decision(
+        { ...policy, strategy: 'replan' },
+        context,
+        `failure "${classification.kind}" is not retryable; re-planning instead of repeating it`,
+      );
+    }
+
     if (context.attempt >= maxAttempts && policy.strategy !== 'ask_human') {
       return this.decision(policy, context, `recovery attempts exhausted (${context.attempt}/${maxAttempts})`, { terminal: true });
     }
