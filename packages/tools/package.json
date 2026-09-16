@@ -1,0 +1,31 @@
+{
+  "name": "@kazi-ai/agentos-tools",
+  "version": "0.1.0",
+  "description": "Built-in tools, tool registry, permissions, and execution environments for KaziAI AgentOS.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "tsc -b --clean"
+  },
+  "dependencies": {
+    "@kazi-ai/agentos-core": "workspace:*",
+    "pg": "^8.23.0",
+    "zod": "^4.6.5",
+    "zod-to-json-schema": "^3.24.6"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1"
+  }
+}
