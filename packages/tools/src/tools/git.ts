@@ -28,7 +28,10 @@ export function createGitTool(options: GitToolOptions = {}): AgentTool {
     risk: 'MEDIUM',
     timeoutMs: 120_000,
     inputSchema: gitInput,
-    permissions: { git: { read: true, commit: true, push: false } },
+    // The capabilities this tool can use. Push is listed because the tool does
+    // push when the run grants `git.push` and policy approves it; the executor
+    // restricts these against the run's grant, which stays authoritative.
+    permissions: { git: { read: true, commit: true, push: true } },
     sandbox: { workspaceConfined: true },
     async execute(input: unknown, context: ToolContext) {
       const args = gitInput.parse(input);

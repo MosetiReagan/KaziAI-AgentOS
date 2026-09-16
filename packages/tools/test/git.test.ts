@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createGitTool, createTestToolContext } from '../src/index.js';
@@ -57,6 +58,22 @@ describe('git tool', () => {
     await expect(
       createGitTool({ allowPush: false }).execute({ operation: 'push', remote: 'origin' }, withPushButDisabledTool),
     ).rejects.toMatchObject({ code: 'tool.permission_denied' });
+  });
+
+  it('pushes to a real remote once the run grants push', async () => {
+    const context = await createTestToolContext({ permissions: pusher });
+    initRepo(context.workspaceDir);
+    const remote = mkdtempSync(join(tmpdir(), 'kazi-remote-'));
+    execFileSync('git', ['init', '--bare', '-q', remote]);
+    writeFileSync(join(context.workspaceDir, 'a.txt'), 'content');
+    const tool = createGitTool();
+    await tool.execute({ operation: 'add', path: '.' }, context);
+    await tool.execute({ operation: 'commit', message: 'test: initial' }, context);
+
+    const pushed = await tool.execute({ operation: 'push', remote, branch: 'HEAD:main' }, context);
+    expect(pushed.success).toBe(true);
+    const heads = execFileSync('git', ['--git-dir', remote, 'rev-parse', 'refs/heads/main']).toString().trim();
+    expect(heads).toMatch(/^[0-9a-f]{40}$/);
   });
 
   it('requires a message for commit and a branch for checkout', async () => {

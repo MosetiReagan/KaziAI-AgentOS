@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { DefaultToolRegistry, mergePermissions, matchesCommand, canExecuteTerminal } from '../src/index.js';
+import {
+  DefaultToolRegistry,
+  canExecuteTerminal,
+  matchesCommand,
+  mergePermissions,
+  restrictPermissions,
+} from '../src/index.js';
 import { createBuiltinTools } from '../src/index.js';
 
 describe('tool registry', () => {
@@ -53,6 +59,39 @@ describe('permission merging', () => {
   it('denies by default when nothing is granted', () => {
     expect(mergePermissions([undefined, {}])).toEqual({});
     expect(canExecuteTerminal({}, 'ls').allowed).toBe(false);
+  });
+
+  it('never lets a tool widen the capability the run granted', () => {
+    const effective = restrictPermissions(
+      { filesystem: { read: true } },
+      { filesystem: { read: true, write: true }, network: { enabled: true } },
+    );
+    expect(effective.filesystem).toMatchObject({ read: true, write: false });
+    expect(effective.network).toMatchObject({ enabled: false });
+  });
+
+  it('lets a tool narrow itself but not open a capability the run granted', () => {
+    const narrowed = restrictPermissions({ git: { read: true, commit: true, push: true } }, { git: { push: false } });
+    expect(narrowed.git).toMatchObject({ read: true, commit: true, push: false });
+  });
+
+  it('intersects allow lists, unions deny lists and never widens a list to empty', () => {
+    const effective = restrictPermissions(
+      { terminal: { execute: true, allowCommands: ['ls', 'git*'] }, network: { enabled: true, allowedHosts: ['api.example.com'] } },
+      { terminal: { allowCommands: ['git*', 'rm*'], denyCommands: ['git push*'] }, network: { allowedHosts: ['other.example.com'] } },
+    );
+    expect(effective.terminal?.allowCommands).toEqual(['git*']);
+    expect(effective.terminal?.denyCommands).toEqual(['git push*']);
+    // The intersection is empty, so the run's own list stands: still no wider
+    // than what the run granted.
+    expect(effective.network?.allowedHosts).toEqual(['api.example.com']);
+  });
+
+  it('denies everything when the run grants nothing', () => {
+    expect(restrictPermissions(undefined, { terminal: { execute: true } })).toEqual({
+      terminal: { execute: false },
+    });
+    expect(restrictPermissions({}, undefined)).toEqual({});
   });
 
   it('enforces deny lists over allow lists', () => {

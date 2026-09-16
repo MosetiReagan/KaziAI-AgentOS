@@ -49,6 +49,82 @@ export function mergePermissions(layers: Array<ToolPermissions | undefined>): To
   return stripUndefined(merged);
 }
 
+/**
+ * Hand a tool the capabilities it may use: the run's grant, restricted by what
+ * the tool declares it needs.
+ *
+ * `mergePermissions` treats an unspecified layer as "inherit from the other
+ * layer", which is what stacking policy layers wants. A tool declaration is not
+ * a policy layer though: a tool must never be *given* a capability the run did
+ * not grant just because the tool listed it. So here the run's grant is
+ * authoritative and anything it does not state is denied, while a tool may
+ * narrow itself further by declaring a capability `false`. Lists (allowed
+ * hosts, command allow-lists, workspace roots) are intersected and deny-lists
+ * are unioned, and an intersection that would erase the run's list falls back
+ * to the run's list so it can never widen access.
+ */
+export function restrictPermissions(
+  granted: ToolPermissions | undefined,
+  required: ToolPermissions | undefined,
+): ToolPermissions {
+  const g = granted ?? {};
+  const r = required ?? {};
+  const out: ToolPermissions = {};
+  if (g.filesystem ?? r.filesystem) {
+    out.filesystem = {
+      read: grantBool(g.filesystem?.read, r.filesystem?.read),
+      write: grantBool(g.filesystem?.write, r.filesystem?.write),
+      delete: grantBool(g.filesystem?.delete, r.filesystem?.delete),
+      roots: narrowList(g.filesystem?.roots, r.filesystem?.roots),
+    };
+  }
+  if (g.terminal ?? r.terminal) {
+    out.terminal = {
+      execute: grantBool(g.terminal?.execute, r.terminal?.execute),
+      allowCommands: narrowList(g.terminal?.allowCommands, r.terminal?.allowCommands),
+      denyCommands: unionList(g.terminal?.denyCommands, r.terminal?.denyCommands),
+    };
+  }
+  if (g.network ?? r.network) {
+    out.network = {
+      enabled: grantBool(g.network?.enabled, r.network?.enabled),
+      allowedHosts: narrowList(g.network?.allowedHosts, r.network?.allowedHosts),
+      methods: narrowList(g.network?.methods, r.network?.methods),
+    };
+  }
+  if (g.git ?? r.git) {
+    out.git = {
+      read: grantBool(g.git?.read, r.git?.read),
+      commit: grantBool(g.git?.commit, r.git?.commit),
+      push: grantBool(g.git?.push, r.git?.push),
+    };
+  }
+  if (g.database ?? r.database) {
+    out.database = {
+      read: grantBool(g.database?.read, r.database?.read),
+      write: grantBool(g.database?.write, r.database?.write),
+      connections: narrowList(g.database?.connections, r.database?.connections),
+    };
+  }
+  return stripUndefined(out);
+}
+
+function grantBool(granted: boolean | undefined, required: boolean | undefined): boolean | undefined {
+  if (granted === undefined && required === undefined) return undefined;
+  if (required === false) return false;
+  return granted === true;
+}
+
+function narrowList(granted: string[] | undefined, required: string[] | undefined): string[] | undefined {
+  if (granted === undefined) return required;
+  if (required === undefined) return granted;
+  const narrowed = granted.filter((item) => required.includes(item));
+  // An empty allow-list means "no restriction" for the tools that read these
+  // lists, so an empty intersection must fall back to the run's own list
+  // rather than silently opening the capability up.
+  return narrowed.length > 0 ? narrowed : granted;
+}
+
 function intersectBool(current: boolean | undefined, next: boolean | undefined): boolean | undefined {
   if (current === false || next === false) return false;
   if (current === undefined) return next;

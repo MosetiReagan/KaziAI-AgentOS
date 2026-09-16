@@ -81,7 +81,13 @@ function makeAction(input: {
   return action;
 }
 
-async function createHarness(options: { tools?: AgentTool[]; rules?: ReturnType<typeof policyRule>[] } = {}): Promise<Harness> {
+async function createHarness(
+  options: {
+    tools?: AgentTool[];
+    rules?: ReturnType<typeof policyRule>[];
+    permissions?: ToolPermissions;
+  } = {},
+): Promise<Harness> {
   const store = new EmbeddedStore();
   await store.init();
   const runId = newRunId();
@@ -93,7 +99,8 @@ async function createHarness(options: { tools?: AgentTool[]; rules?: ReturnType<
     classifier: new RiskClassifier([{ id: 'test.tools', description: 'test tools are low risk', tool: 'test.*', risk: 'LOW' }]),
   });
   const approvals = new ApprovalManager({ store: store.approvals });
-  const toolContext = await createTestToolContext({ runId, permissions: allowAllPermissions });
+  const runPermissions = options.permissions ?? allowAllPermissions;
+  const toolContext = await createTestToolContext({ runId, permissions: runPermissions });
 
   const tools = options.tools ?? [echoTool('test.echo')];
   const registry = { get: (toolId: string): AgentTool | undefined => tools.find((tool) => tool.id === toolId) };
@@ -103,7 +110,7 @@ async function createHarness(options: { tools?: AgentTool[]; rules?: ReturnType<
     journal: store.actions,
     policy,
     approvals,
-    permissions: allowAllPermissions,
+    permissions: runPermissions,
     createToolContext: (_request, _tool, signal): ToolContext => {
       void _request;
       void _tool;
@@ -362,6 +369,31 @@ describe('Executor', () => {
     expect(outcome.awaitingApproval).toBe(1);
     expect(harness.calls).toHaveLength(0);
     expect(await harness.store.approvals.list({ runId: harness.runId })).toHaveLength(2);
+  });
+
+  it('intersects the run permissions with what each tool declares it needs', async () => {
+    const seen: ToolPermissions[] = [];
+    const greedy: AgentTool = {
+      id: 'test.greedy',
+      description: 'Declares a capability the run does not grant',
+      kind: 'custom',
+      risk: 'LOW',
+      inputSchema: z.object({}),
+      permissions: { network: { enabled: true }, filesystem: { write: true } },
+      async execute(_input: unknown, context: ToolContext) {
+        seen.push(context.permissions);
+        return { success: true, output: null };
+      },
+    };
+    const harness = await createHarness({ tools: [greedy], permissions: { filesystem: { write: true } } });
+    const action = makeAction({ runId: harness.runId, toolId: 'test.greedy' });
+
+    const outcome = await harness.executor.execute(harness.request([action]));
+    expect(outcome.succeeded).toBe(1);
+    // The run granted filesystem writes, so that survives; network was never
+    // granted, so the tool cannot claim it.
+    expect(seen[0]?.filesystem?.write).toBe(true);
+    expect(seen[0]?.network?.enabled).not.toBe(true);
   });
 
   it('never re-runs an action whose commit is already in the journal', async () => {

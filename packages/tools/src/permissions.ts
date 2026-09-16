@@ -1,5 +1,5 @@
 import type { ToolPermissions } from '@kazi-ai/agentos-core';
-import { deepMerge, mergePermissions } from '@kazi-ai/agentos-core';
+import { deepMerge, mergePermissions, restrictPermissions } from '@kazi-ai/agentos-core';
 
 export interface PermissionCheck {
   allowed: boolean;
@@ -74,5 +74,5 @@ export function matchesCommand(pattern: string, command: string): boolean {
   return command === pattern;
 }
 
-export { deepMerge, mergePermissions };
+export { deepMerge, mergePermissions, restrictPermissions };
 

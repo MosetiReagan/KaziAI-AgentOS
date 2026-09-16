@@ -6,6 +6,7 @@ import {
   ToolTimeoutError,
   ValidationError,
   mapConcurrent,
+  restrictPermissions,
   toAgentError,
   truncateJson,
   type ActionJournal,
@@ -131,7 +132,7 @@ export class Executor {
       });
 
       const waveResults = await mapConcurrent(runnable, concurrency, async (node) =>
-        this.executeOne(node.value, request, this.permissionsFor(request, node.value.toolId)),
+        this.executeOne(node.value, request, this.effectivePermissions(request, node.value.toolId)),
       );
       for (const outcome of waveResults) {
         outcomes.push(outcome);
@@ -159,13 +160,23 @@ export class Executor {
     permissions?: ToolPermissions,
   ): Promise<ActionOutcome> {
     const full: ExecutionRequest = { ...request, actions: [action] };
-    return this.executeOne(action, full, permissions ?? this.permissionsFor(full, action.toolId));
+    return this.executeOne(action, full, permissions ?? this.effectivePermissions(full, action.toolId));
   }
 
   private permissionsFor(request: ExecutionRequest, toolId: string): ToolPermissions {
     return typeof this.options.permissions === 'function'
       ? this.options.permissions(request, toolId)
       : this.options.permissions;
+  }
+
+  /**
+   * A tool may only ever use less capability than the run grants it: the run's
+   * resolved permissions are restricted by the permissions the tool declares it
+   * needs (spec §21). A tool that wants a capability the run does not grant is
+   * handed a denial, so it cannot escalate by declaring its own requirements.
+   */
+  private effectivePermissions(request: ExecutionRequest, toolId: string): ToolPermissions {
+    return restrictPermissions(this.permissionsFor(request, toolId), this.options.registry.get(toolId)?.permissions);
   }
 
   private async executeOne(
