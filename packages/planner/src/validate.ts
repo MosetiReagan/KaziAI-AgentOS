@@ -33,20 +33,29 @@ export function normalizePlan(raw: RawPlan, options: NormalizePlanOptions = {}):
   if (raw.steps.length === 0) throw new ValidationError('A plan must contain at least one step');
   const steps: PlanStep[] = [];
   const limited = raw.steps.slice(0, maxSteps);
+  // Pass 1: materialize every step so forward references resolve.
   limited.forEach((step, index) => {
-    const dependencies = (step.depends_on ?? [])
-      .filter((dependency) => Number.isInteger(dependency) && dependency >= 0 && dependency < limited.length && dependency !== index)
-      .map((dependency) => steps[dependency]?.id)
-      .filter((id): id is PlanStep['id'] => id !== undefined);
     steps.push({
       id: newStepId(now),
       index,
       description: step.description,
       ...(step.tool ? { toolId: step.tool } : {}),
       ...(step.verification ? { verification: step.verification } : {}),
-      ...(dependencies.length > 0 ? { dependsOn: dependencies } : {}),
       status: 'pending',
     });
+  });
+  // Pass 2: resolve dependency indexes into step ids, discarding anything out
+  // of range or self-referential.
+  limited.forEach((step, index) => {
+    const dependencies = (step.depends_on ?? [])
+      .filter(
+        (dependency) =>
+          Number.isInteger(dependency) && dependency >= 0 && dependency < limited.length && dependency !== index,
+      )
+      .map((dependency) => steps[dependency]?.id)
+      .filter((id): id is PlanStep['id'] => id !== undefined);
+    const target = steps[index];
+    if (target && dependencies.length > 0) target.dependsOn = [...new Set(dependencies)];
   });
   return {
     id: newPlanId(now),
