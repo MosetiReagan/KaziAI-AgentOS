@@ -11,6 +11,7 @@ export * from './state-machine.js';
 export * from './lock.js';
 export * from './budget-manager.js';
 export * from './event-bus.js';
+export * from './config.js';
 
 export * from './contracts/model.js';
 export * from './contracts/tool.js';
@@ -27,4 +28,3 @@ export * from './contracts/identity.js';
 export * from './contracts/environment.js';
 export * from './contracts/budget.js';
 export * from './contracts/journal.js';
-
