@@ -17,6 +17,7 @@ describe('tool registry', () => {
   it('rejects duplicate registration instead of shadowing a tool', async () => {
     const registry = new DefaultToolRegistry();
     const [tool] = await createBuiltinTools({ filesystem: {} });
+    if (!tool) throw new Error('expected at least one built-in filesystem tool');
     registry.register(tool);
     expect(() => registry.register(tool)).toThrow(/already registered/);
     registry.override(tool);

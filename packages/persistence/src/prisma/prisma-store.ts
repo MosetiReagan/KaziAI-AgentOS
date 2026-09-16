@@ -45,6 +45,7 @@ function loadPrismaClient(): any {
     throw new Error(
       'Prisma client is not generated. Run "pnpm --filter @kazi-ai/agentos-persistence prisma generate" first. ' +
         `Underlying error: ${(error as Error).message}`,
+      { cause: error },
     );
   }
 }

@@ -41,13 +41,12 @@ export class DeterministicPlanner implements Planner {
     const verify = this.pick(toolIds, this.options.verificationTools ?? ['terminal.exec']);
 
     const steps: PlanStep[] = [];
-    let index = 0;
     const nextId = (): PlanStep['id'] => newStepId();
     const investigateId = nextId();
 
     steps.push({
       id: investigateId,
-      index: index++,
+      index: steps.length,
       description: `Inspect the workspace and gather evidence relevant to: ${goal}`,
       ...(investigate ? { toolId: investigate } : {}),
       status: 'pending',
@@ -55,7 +54,7 @@ export class DeterministicPlanner implements Planner {
     if (act) {
       steps.push({
         id: nextId(),
-        index: index++,
+        index: steps.length,
         description: `Implement the change required by: ${goal}`,
         toolId: act,
         dependsOn: [investigateId],
@@ -65,7 +64,7 @@ export class DeterministicPlanner implements Planner {
     if (verify) {
       steps.push({
         id: nextId(),
-        index: index++,
+        index: steps.length,
         description: 'Verify the change by running the relevant checks',
         toolId: verify,
         dependsOn: [steps[steps.length - 1]?.id ?? investigateId],

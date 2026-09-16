@@ -1,6 +1,6 @@
 import type { ExecutionEnvironment, EnvironmentProvider } from '@kazi-ai/agentos-core';
 import { LocalEnvironmentProvider, type LocalEnvironmentOptions } from './local.js';
-import { DockerEnvironmentProvider, type DockerEnvironmentOptions } from './docker.js';
+import { DockerEnvironmentProvider } from './docker.js';
 
 export * from './local.js';
 export * from './docker.js';
