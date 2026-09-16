@@ -76,6 +76,18 @@ importers:
         specifier: 6.19.3
         version: 6.19.3(typescript@5.9.3)
 
+  packages/planner:
+    dependencies:
+      '@kazi-ai/agentos-core':
+        specifier: workspace:*
+        version: link:../core
+      '@kazi-ai/agentos-providers':
+        specifier: workspace:*
+        version: link:../providers
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
+
   packages/policies:
     dependencies:
       '@kazi-ai/agentos-core':
