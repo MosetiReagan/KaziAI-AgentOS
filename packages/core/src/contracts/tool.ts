@@ -1,3 +1,4 @@
+import type { IdempotencyClass } from '../errors.js';
 import type { JsonObject, JsonValue } from '../json.js';
 import type { RunId } from '../ids.js';
 import type { Logger } from '../logger.js';
@@ -120,6 +121,13 @@ export interface AgentTool<Input = unknown, Output = JsonValue> {
   sandbox?: ToolSandboxRequirements;
   /** Risk hint used by the policy engine before execution. */
   risk?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  /**
+   * Idempotency the tool declares for its own operations, when it can classify
+   * them statically (e.g. an MCP server that annotates a tool read-only). The
+   * runtime uses it instead of guessing from the tool id, which decides whether
+   * a crashed call may be retried (spec §32).
+   */
+  defaultIdempotency?: IdempotencyClass;
   timeoutMs?: number;
   execute(input: Input, context: ToolContext): Promise<ToolResult & { output: Output }>;
 }

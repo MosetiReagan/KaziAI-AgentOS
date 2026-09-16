@@ -45,6 +45,13 @@ describe('idempotency classification', () => {
     expect(idempotencyFor({ id: 'mcp.github.create_issue' }, null)).toBe('unknown');
   });
 
+  it('prefers the idempotency a tool declares for itself', () => {
+    expect(idempotencyFor({ id: 'unknown.tool', defaultIdempotency: 'retry-safe' }, null)).toBe('retry-safe');
+    expect(idempotencyFor({ id: 'mcp.notes.list_notes', defaultIdempotency: 'idempotent' }, null)).toBe('idempotent');
+    // A declared class wins over the built-in table in both directions.
+    expect(idempotencyFor({ id: 'filesystem.read', defaultIdempotency: 'unknown' }, null)).toBe('unknown');
+  });
+
   it('treats a mutating git or database operation as non-idempotent', () => {
     expect(idempotencyFor({ id: 'git' }, { operation: 'diff' })).toBe('idempotent');
     expect(idempotencyFor({ id: 'git' }, { operation: 'push' })).toBe('non-idempotent');

@@ -35,9 +35,13 @@ const MUTATING_GIT_OPERATIONS = new Set(['push', 'commit', 'add', 'checkout', 'r
  * non-idempotent work without evidence that it never landed (spec §32).
  */
 export function idempotencyFor(
-  tool: Pick<AgentTool, 'id'>,
+  tool: Pick<AgentTool, 'id'> & { defaultIdempotency?: AgentAction['idempotency'] },
   args: JsonValue,
 ): AgentAction['idempotency'] {
+  // A tool that knows how its own operations behave wins over the built-in
+  // table: guessing wrong here means either replaying a side effect or refusing
+  // to recover work that was always safe to repeat.
+  if (tool.defaultIdempotency) return tool.defaultIdempotency;
   if (IDEMPOTENT_TOOLS.has(tool.id)) {
     if (tool.id === 'git' && isMutatingGit(args)) return 'non-idempotent';
     if (tool.id === 'database.query' && isMutatingDatabase(args)) return 'non-idempotent';
