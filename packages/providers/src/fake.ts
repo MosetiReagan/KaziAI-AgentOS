@@ -17,6 +17,8 @@ export interface FakeTurn {
   finishReason?: string;
   /** Throw a classified error instead of responding. */
   fail?: { code?: string; message?: string; retryable?: boolean; times?: number };
+  /** Reported cost of this call, so budget enforcement can be exercised. */
+  costUsd?: number;
   /** Artificial latency, useful for cancellation and timeout tests. */
   delayMs?: number;
 }
@@ -119,6 +121,7 @@ export class FakeModelProvider implements ModelProvider {
         outputTokens: turn.usage?.outputTokens ?? estimateTokens({ content: turn.text ?? '' }),
       }),
       finishReason: turn.finishReason ?? (toolCalls.length > 0 ? 'tool_calls' : 'stop'),
+      ...(turn.costUsd === undefined ? {} : { costUsd: turn.costUsd }),
       provider: this.id,
       model: request.model,
     });
