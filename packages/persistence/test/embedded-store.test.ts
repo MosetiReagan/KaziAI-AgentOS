@@ -237,6 +237,43 @@ describe('embedded store', () => {
   });
 });
 
+describe('EmbeddedStore read/write isolation', () => {
+  it('never hands out a live reference to a stored run', async () => {
+    const store = new EmbeddedStore({ dir: tempDir() });
+    const run = makeRun();
+    await store.runs.create(run);
+
+    // Callers mutate the objects they loaded (a run session bumps the state
+    // version); that must not change what the store believes it holds.
+    const loaded = await store.runs.get(run.id);
+    expect(loaded).toBeDefined();
+    loaded!.status = 'PAUSED';
+    loaded!.stateVersion = 99;
+
+    const reloaded = await store.runs.get(run.id);
+    expect(reloaded?.status).toBe(run.status);
+    expect(reloaded?.stateVersion).toBe(run.stateVersion);
+
+    // ...and an optimistic-concurrency write still sees the stored version.
+    await expect(store.runs.update({ ...run, status: 'QUEUED' }, run.stateVersion)).resolves.toBeDefined();
+  });
+
+  it('does not alias the record passed to update', async () => {
+    const store = new EmbeddedStore({ dir: tempDir() });
+    const run = makeRun();
+    await store.runs.create(run);
+
+    const version = run.stateVersion;
+    await store.runs.update(run, version);
+    run.stateVersion = version + 1;
+    run.status = 'FAILED';
+    const stored = await store.runs.get(run.id);
+    expect(stored?.stateVersion).toBe(version);
+    expect(stored?.status).toBe('CREATED');
+  });
+});
+
+
 function event(runId: string, sequence: number, type: AgentEvent['type']): AgentEvent {
   return createEvent({ type, runId, organizationId: 'org_1', projectId: 'prj_1', sequence });
 }

@@ -46,7 +46,10 @@ export class JsonlLog<T extends { id: string }> {
 
   put(record: T): void {
     if (!this.records.has(record.id)) this.order.push(record.id);
-    this.records.set(record.id, record);
+    // Store a detached copy: callers keep mutating the objects they hand us
+    // (a run session bumps `stateVersion` between writes), and optimistic
+    // concurrency only works if the stored value cannot change behind our back.
+    this.records.set(record.id, detach(record));
     this.append(record);
   }
 
@@ -57,7 +60,8 @@ export class JsonlLog<T extends { id: string }> {
   }
 
   get(id: string): T | undefined {
-    return this.records.get(id);
+    const record = this.records.get(id);
+    return record === undefined ? undefined : detach(record);
   }
 
   has(id: string): boolean {
@@ -75,19 +79,24 @@ export class JsonlLog<T extends { id: string }> {
     const out: T[] = [];
     for (const id of this.order) {
       const record = this.records.get(id);
-      if (record) out.push(record);
+      if (record) out.push(detach(record));
     }
     return out;
   }
 
   filter(predicate: (record: T) => boolean): T[] {
-    return this.all().filter(predicate);
+    const out: T[] = [];
+    for (const id of this.order) {
+      const record = this.records.get(id);
+      if (record && predicate(record)) out.push(detach(record));
+    }
+    return out;
   }
 
   find(predicate: (record: T) => boolean): T | undefined {
     for (const id of this.order) {
       const record = this.records.get(id);
-      if (record && predicate(record)) return record;
+      if (record && predicate(record)) return detach(record);
     }
     return undefined;
   }
@@ -142,18 +151,18 @@ export class JsonlAppendLog<T> {
   }
 
   append(item: T): void {
-    this.items.push(item);
+    this.items.push(detach(item));
     if (!this.path) return;
     mkdirSync(dirname(this.path), { recursive: true });
     appendFileSync(this.path, `${JSON.stringify(item)}\n`, 'utf8');
   }
 
   all(): T[] {
-    return [...this.items];
+    return this.items.map((item) => detach(item));
   }
 
   filter(predicate: (item: T) => boolean): T[] {
-    return this.items.filter(predicate);
+    return this.items.filter(predicate).map((item) => detach(item));
   }
 
   get length(): number {
@@ -165,3 +174,7 @@ export class JsonlAppendLog<T> {
   }
 }
 
+/** Read/write isolation for stored records: never hand out a live reference. */
+function detach<T>(record: T): T {
+  return structuredClone(record);
+}
