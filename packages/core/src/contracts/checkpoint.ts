@@ -25,6 +25,9 @@ export interface EnvironmentSnapshot {
 
 export interface SerializedAgentState {
   runId: string;
+  /** Tenant identity, carried here so a checkpoint can be forked on its own. */
+  organizationId?: string;
+  projectId?: string;
   status: string;
   stateVersion: number;
   goal: string;

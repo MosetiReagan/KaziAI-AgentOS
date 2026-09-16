@@ -42,6 +42,16 @@ importers:
         specifier: ^4.6.5
         version: 4.6.5
 
+  packages/checkpoints:
+    dependencies:
+      '@kazi-ai/agentos-core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@kazi-ai/agentos-persistence':
+        specifier: workspace:*
+        version: link:../persistence
+
   packages/context:
     dependencies:
       '@kazi-ai/agentos-core':

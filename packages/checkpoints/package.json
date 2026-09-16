@@ -1,0 +1,26 @@
+{
+  "name": "@kazi-ai/agentos-checkpoints",
+  "version": "0.1.0",
+  "description": "Checkpoint scheduling, retention, restore and fork for KaziAI AgentOS.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "tsc -b --clean"
+  },
+  "dependencies": {
+    "@kazi-ai/agentos-core": "workspace:*"
+  },
+  "devDependencies": {
+    "@kazi-ai/agentos-persistence": "workspace:*"
+  }
+}
