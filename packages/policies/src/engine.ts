@@ -29,7 +29,8 @@ export interface PolicyEngineOptions {
  */
 export class DefaultPolicyEngine implements PolicyEngine {
   private rules: PolicyRule[];
-  private readonly classifier: RiskClassifier;
+  /** Exposed for introspection: the CLI and API show how risk is classified. */
+  readonly classifier: RiskClassifier;
   private readonly defaultOutcome: PolicyDecision['outcome'];
   private readonly approvalRisk: RiskLevel;
   private readonly denyRisk: RiskLevel | undefined;

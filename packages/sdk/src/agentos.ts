@@ -35,7 +35,8 @@ import {
   type ProgressVerifier,
 } from '@kazi-ai/agentos-runtime';
 import type { AgentDefinition } from '@kazi-ai/agentos-agent';
-import { Agent, type AgentOptions } from './agent.js';
+import { McpManager, type McpServerConfigInput, type McpServerStatus } from '@kazi-ai/agentos-mcp';
+import { Agent, type AgentSpec } from './agent.js';
 import { providersFromEnv } from './providers-from-env.js';
 
 export interface AgentOSOptions {
@@ -67,8 +68,20 @@ export interface AgentOSOptions {
   permissions?: ToolPermissions;
   organizationId?: string;
   projectId?: string;
+  /**
+   * MCP servers to connect at startup (spec §19). Their discovered tools are
+   * registered as `mcp.<server>.<tool>` and are governed by the same policy
+   * engine as local tools.
+   */
+  mcp?: { servers?: McpServerConfigInput[]; strict?: boolean };
   /** Escape hatch: options passed straight to the runtime (spec §74). */
   runtime?: Partial<AgentOSRuntimeOptions>;
+}
+
+/** Result of connecting the configured MCP servers. */
+export interface McpStartupReport {
+  statuses: McpServerStatus[];
+  registeredTools: string[];
 }
 
 /**
@@ -154,6 +167,8 @@ export class AgentOS {
           workspaceRoot: `${dataDir}/workspaces`,
           snapshotStoreRoot: `${dataDir}/snapshots`,
         },
+      // Both factories may decline; the runtime then falls back to the LLM
+      // planner and the verification commands in the agent definition.
       planner: (input) => planners.get(input.run.agentId),
       verifier: (input) => verifiers.get(input.run.agentId),
       ...(options.logger ? { logger: options.logger } : {}),
@@ -169,26 +184,40 @@ export class AgentOS {
     if (options.runtime?.verifier) runtimeOptions.verifier = options.runtime.verifier;
 
     const runtime = new AgentOSRuntime(runtimeOptions);
-    return new AgentOS(options, store, providers, tools, runtime, planners, verifiers);
+    const os = new AgentOS(options, store, providers, tools, runtime, planners, verifiers);
+
+    const configuredServers = options.mcp?.servers ?? [];
+    if (configuredServers.length > 0) {
+      const manager = new McpManager({
+        strict: options.mcp?.strict ?? true,
+        ...(options.logger ? { logger: options.logger } : {}),
+        resolveSecret: (reference) => resolveMcpSecret(reference),
+      });
+      for (const server of configuredServers) manager.addServer(server);
+      const statuses = await manager.start();
+      const registeredTools = manager.registerInto(tools);
+      os.attachMcp(manager, { statuses, registeredTools });
+    }
+    return os;
   }
 
   /** Declare an agent on this AgentOS (spec §72). */
-  agent(options: AgentOptions): Agent {
+  agent(spec: AgentSpec): Agent {
     return new Agent(this, {
-      ...options,
-      ...((options.organizationId ?? this.organizationId)
-        ? { organizationId: options.organizationId ?? this.organizationId }
+      ...spec,
+      ...((spec.organizationId ?? this.organizationId)
+        ? { organizationId: spec.organizationId ?? this.organizationId }
         : {}),
-      ...((options.projectId ?? this.projectId)
-        ? { projectId: options.projectId ?? this.projectId }
+      ...((spec.projectId ?? this.projectId)
+        ? { projectId: spec.projectId ?? this.projectId }
         : {}),
     });
   }
 
   /** Called by the `Agent` constructor; replacement components are per agent. */
   registerAgent(agent: Agent): void {
-    if (agent.options.planner) this.planners.set(agent.id, agent.options.planner);
-    if (agent.options.verifier) this.verifiers.set(agent.id, agent.options.verifier);
+    if (agent.planner) this.planners.set(agent.id, agent.planner);
+    if (agent.verifier) this.verifiers.set(agent.id, agent.verifier);
   }
 
   plannerFor(agentId: string): Planner | undefined {
@@ -201,8 +230,8 @@ export class AgentOS {
 
   /** Register an agent's validated definition with the runtime's registry. */
   async registerDefinition(agent: Agent): Promise<AgentDefinition> {
-    const organizationId = agent.options.organizationId ?? this.organizationId;
-    const projectId = agent.options.projectId ?? this.projectId;
+    const organizationId = agent.scope.organizationId ?? this.organizationId;
+    const projectId = agent.scope.projectId ?? this.projectId;
     if (!organizationId || !projectId) {
       throw new ConfigurationError(
         'Registering an agent needs an organizationId and a projectId; set them on the agent or on AgentOS',
@@ -215,6 +244,18 @@ export class AgentOS {
       definition: agent.definition,
       source: JSON.stringify(agent.definition),
     });
+  }
+
+  private mcp?: { manager: McpManager; report: McpStartupReport };
+
+  /** Attach the MCP manager that was started during `create()`. */
+  attachMcp(manager: McpManager, report: McpStartupReport): void {
+    this.mcp = { manager, report };
+  }
+
+  /** MCP server health, or an empty report when no servers are configured. */
+  mcpReport(): McpStartupReport {
+    return this.mcp?.report ?? { statuses: [], registeredTools: [] };
   }
 
   /** The deployment's own view of what it can do (used by `kazi-agent doctor`). */
@@ -231,6 +272,7 @@ export class AgentOS {
   async close(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
+    await this.mcp?.manager.close().catch(() => undefined);
     await this.runtime.close().catch(() => undefined);
     await this.store.close().catch(() => undefined);
   }
@@ -239,4 +281,20 @@ export class AgentOS {
 /** Convenience factory: `const os = await createAgentOS({ ... })`. */
 export async function createAgentOS(options: AgentOSOptions = {}): Promise<AgentOS> {
   return AgentOS.create(options);
+}
+
+function resolveMcpSecret(reference: string): Promise<string> {
+  const name = reference.startsWith('secret://')
+    ? `KAZI_SECRET_${reference
+        .slice('secret://'.length)
+        .replace(/[^a-zA-Z0-9]+/g, '_')
+        .toUpperCase()}`
+    : reference;
+  const value = process.env[name];
+  if (value === undefined) {
+    return Promise.reject(
+      new ConfigurationError(`Secret ${reference} is not available in the environment`, { name }),
+    );
+  }
+  return Promise.resolve(value);
 }

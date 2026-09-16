@@ -95,6 +95,33 @@ importers:
         specifier: workspace:*
         version: link:../persistence
 
+  packages/cli:
+    dependencies:
+      '@kazi-ai/agentos':
+        specifier: workspace:*
+        version: link:../sdk
+      '@kazi-ai/agentos-agent':
+        specifier: workspace:*
+        version: link:../agent
+      '@kazi-ai/agentos-core':
+        specifier: workspace:*
+        version: link:../core
+      '@kazi-ai/agentos-evaluation':
+        specifier: workspace:*
+        version: link:../evaluation
+      '@kazi-ai/agentos-persistence':
+        specifier: workspace:*
+        version: link:../persistence
+      '@kazi-ai/agentos-policies':
+        specifier: workspace:*
+        version: link:../policies
+      '@kazi-ai/agentos-runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      '@kazi-ai/agentos-tools':
+        specifier: workspace:*
+        version: link:../tools
+
   packages/context:
     dependencies:
       '@kazi-ai/agentos-core':
@@ -285,6 +312,9 @@ importers:
       '@kazi-ai/agentos-executor':
         specifier: workspace:*
         version: link:../executor
+      '@kazi-ai/agentos-mcp':
+        specifier: workspace:*
+        version: link:../mcp
       '@kazi-ai/agentos-memory':
         specifier: workspace:*
         version: link:../memory

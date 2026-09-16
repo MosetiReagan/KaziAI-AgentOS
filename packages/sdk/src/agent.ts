@@ -11,12 +11,15 @@ import {
   type ToolPermissions,
   type Trace,
 } from '@kazi-ai/agentos-core';
-import { parseAgentDefinition, type AgentDefinition } from '@kazi-ai/agentos-agent';
+import {
+  expandToolFamilies,
+  parseAgentDefinition,
+  type AgentDefinition,
+} from '@kazi-ai/agentos-agent';
 import type { DefaultToolRegistry } from '@kazi-ai/agentos-tools';
 import type { ProgressVerifier } from '@kazi-ai/agentos-runtime';
 import type { Planner } from '@kazi-ai/agentos-core';
 import type { AgentOS } from './agentos.js';
-import { expandToolFamilies } from './tools.js';
 
 export interface AgentModelOptions {
   provider: string;
@@ -51,6 +54,21 @@ export interface AgentOptions {
   planner?: Planner;
   /** Replace progress verification for this agent only (spec §74). */
   verifier?: ProgressVerifier;
+}
+
+/**
+ * An agent is either declared in code (`AgentOptions`) or handed over as an
+ * already-parsed definition, e.g. one loaded from `agents/developer-agent.yaml`.
+ */
+export type AgentSpec = AgentOptions | AgentDefinitionSpec;
+
+export interface AgentDefinitionSpec extends AgentDefinition {
+  organizationId?: string;
+  projectId?: string;
+}
+
+export function isDefinitionSpec(spec: AgentSpec): spec is AgentDefinitionSpec {
+  return 'systemPrompt' in spec && typeof spec.model === 'object' && 'provider' in spec.model;
 }
 
 export interface AgentRunRequest {
@@ -92,21 +110,35 @@ export class Agent {
   readonly id: string;
   readonly version: string;
   readonly definition: AgentDefinition;
+  /** Tenant scope this agent runs in. */
+  readonly scope: { organizationId?: string; projectId?: string };
+  /** Optional per-agent replacements resolved by the runtime (spec §74). */
+  readonly planner?: Planner;
+  readonly verifier?: ProgressVerifier;
   /** The shared tool registry, so `agent.tools.register(customTool)` works. */
   readonly tools: DefaultToolRegistry;
 
-  readonly options: AgentOptions;
-
   constructor(
     private readonly os: AgentOS,
-    options: AgentOptions,
+    spec: AgentSpec,
   ) {
-    this.options = options;
-    if (!options.id) throw new ValidationError('An agent needs an id');
-    this.id = options.id;
-    this.version = options.version ?? '1.0.0';
+    if (!spec.id) throw new ValidationError('An agent needs an id');
+    this.id = spec.id;
+    this.version = spec.version ?? '1.0.0';
     this.tools = os.tools;
-    this.definition = parseAgentDefinition(buildRawDefinition(options));
+    this.scope = {
+      ...(spec.organizationId ? { organizationId: spec.organizationId } : {}),
+      ...(spec.projectId ? { projectId: spec.projectId } : {}),
+    };
+    if (isDefinitionSpec(spec)) {
+      // Already validated by `parseAgentDefinition`; re-validating would only
+      // risk rejecting a definition the caller legitimately owns.
+      this.definition = spec;
+    } else {
+      this.definition = parseAgentDefinition(buildRawDefinition(spec));
+      if (spec.planner) this.planner = spec.planner;
+      if (spec.verifier) this.verifier = spec.verifier;
+    }
     os.registerAgent(this);
   }
 
@@ -183,8 +215,8 @@ export class Agent {
 
   /** The configuration a run of this agent will use, before it is created (spec §78). */
   runInput(request: AgentRunRequest): AgentRunInput {
-    const organizationId = request.organizationId ?? this.options.organizationId;
-    const projectId = request.projectId ?? this.options.projectId;
+    const organizationId = request.organizationId ?? this.scope.organizationId;
+    const projectId = request.projectId ?? this.scope.projectId;
     if (!organizationId || !projectId) {
       throw new ConfigurationError(
         'A run needs an organizationId and a projectId; set them on the agent or on AgentOS',
@@ -192,6 +224,8 @@ export class Agent {
       );
     }
     const limits = { ...this.definition.limits, ...(request.limits ?? {}) };
+    // The definition already carries the effective grant: `AgentOptions` fills in
+    // the workspace-confined default, a parsed definition is used as written.
     const permissions = { ...this.definition.permissions, ...(request.permissions ?? {}) };
     return {
       goal: request.goal,

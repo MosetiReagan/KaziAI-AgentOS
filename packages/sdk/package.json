@@ -24,6 +24,7 @@
     "@kazi-ai/agentos-context": "workspace:*",
     "@kazi-ai/agentos-core": "workspace:*",
     "@kazi-ai/agentos-executor": "workspace:*",
+    "@kazi-ai/agentos-mcp": "workspace:*",
     "@kazi-ai/agentos-memory": "workspace:*",
     "@kazi-ai/agentos-persistence": "workspace:*",
     "@kazi-ai/agentos-policies": "workspace:*",

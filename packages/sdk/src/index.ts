@@ -18,7 +18,6 @@
  */
 export * from './agent.js';
 export * from './agentos.js';
-export * from './tools.js';
 export * from './providers-from-env.js';
 
 // The building blocks an agent author needs, re-exported so a definition and a
