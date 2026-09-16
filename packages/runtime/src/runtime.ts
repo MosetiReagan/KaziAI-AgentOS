@@ -93,6 +93,11 @@ export interface AgentOSRuntimeOptions {
   checkpointPolicy?: Partial<CheckpointPolicy>;
   recovery?: DefaultRecoveryEngine;
   agents?: AgentRegistry;
+  /**
+   * Replace the planner entirely (spec §74): a custom planner, or a factory
+   * that decides per run. Overrides the built-in LLM planner.
+   */
+  planner?: Planner | ((input: { run: AgentRun }) => Planner | undefined);
   prompts?: PromptResolver;
   /** Resolve the system prompt for a run (defaults to the agent definition or inline metadata). */
   resolveSystemPrompt?(input: { run: AgentRun; definition?: AgentDefinition }): Promise<string>;
@@ -851,6 +856,9 @@ export class AgentOSRuntime implements AgentRuntime {
   }
 
   private plannerFor(run: AgentRun): Planner | undefined {
+    const injected =
+      typeof this.options.planner === 'function' ? this.options.planner({ run }) : this.options.planner;
+    if (injected) return injected;
     if (!run.config.planningEnabled) return undefined;
     const provider = this.providerFor(run);
     return new LlmPlanner({ provider, model: run.config.model, maxSteps: run.limits.maxSteps ?? 12 });
