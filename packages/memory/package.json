@@ -1,0 +1,25 @@
+{
+  "name": "@kazi-ai/agentos-memory",
+  "version": "0.1.0",
+  "description": "Scoped, TTL-aware memory management for KaziAI AgentOS.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "tsc -b --clean"
+  },
+  "dependencies": {
+    "@kazi-ai/agentos-core": "workspace:*",
+    "zod": "^4.6.5"
+  }
+}
+

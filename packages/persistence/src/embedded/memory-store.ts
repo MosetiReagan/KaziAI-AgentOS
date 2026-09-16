@@ -26,9 +26,11 @@ export function scopeMatches(entry: MemoryScope, query: MemoryScope): boolean {
  */
 export class EmbeddedMemoryStore implements MemoryStore {
   private readonly log: JsonlLog<MemoryEntry>;
+  private readonly now: () => number;
 
-  constructor(dir?: string) {
-    this.log = new JsonlLog<MemoryEntry>({ name: 'memory', ...(dir ? { dir } : {}) });
+  constructor(options: { dir?: string; now?: () => number } = {}) {
+    this.log = new JsonlLog<MemoryEntry>({ name: 'memory', ...(options.dir ? { dir: options.dir } : {}) });
+    this.now = options.now ?? (() => Date.now());
   }
 
   async write(entry: MemoryEntry): Promise<void> {
@@ -40,7 +42,7 @@ export class EmbeddedMemoryStore implements MemoryStore {
   }
 
   async search(query: MemoryQuery): Promise<MemoryEntry[]> {
-    const now = Date.now();
+    const now = this.now();
     const includeExpired = query.includeExpired ?? false;
     const limit = query.limit ?? 20;
     const terms = query.text ? tokenize(query.text) : [];
@@ -97,7 +99,7 @@ export class EmbeddedMemoryStore implements MemoryStore {
     return victims.length;
   }
 
-  async prune(now = Date.now()): Promise<number> {
+  async prune(now = this.now()): Promise<number> {
     const expired = this.log.filter((entry) => entry.expiresAt !== undefined && entry.expiresAt <= now);
     for (const entry of expired) this.log.delete(entry.id);
     return expired.length;
@@ -137,4 +139,3 @@ export function makeMemoryEntry(input: {
     ...(input.tags ? { tags: input.tags } : {}),
   };
 }
-

@@ -36,6 +36,8 @@ import { EmbeddedMemoryStore } from './memory-store.js';
 export interface EmbeddedStoreOptions {
   dir?: string;
   name?: string;
+  /** Injectable clock so TTL behaviour is testable. */
+  now?: () => number;
 }
 
 function paginate<T>(items: T[], limit = 50, offset = 0): Paginated<T> {
@@ -96,7 +98,7 @@ export class EmbeddedStore implements AgentOSStore {
     this.policyDecisionLog = new JsonlAppendLog<PolicyDecisionRecord>(opts('policy-decisions'));
     this.agentDefinitionLog = new JsonlLog<AgentDefinitionRecord>(opts('agent-definitions'));
     this.policyDefinitionLog = new JsonlLog<PolicyDefinitionRecord>(opts('policy-definitions'));
-    this.memoryStore = new EmbeddedMemoryStore(this.dir);
+    this.memoryStore = new EmbeddedMemoryStore({ ...(this.dir ? { dir: this.dir } : {}), now: options.now });
   }
 
   async init(): Promise<void> {
