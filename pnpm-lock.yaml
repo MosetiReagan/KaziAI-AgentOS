@@ -62,6 +62,16 @@ importers:
       '@kazi-ai/agentos-policies':
         specifier: workspace:*
         version: link:../policies
+    devDependencies:
+      '@kazi-ai/agentos-persistence':
+        specifier: workspace:*
+        version: link:../persistence
+      '@kazi-ai/agentos-tools':
+        specifier: workspace:*
+        version: link:../tools
+      zod:
+        specifier: ^4.1.11
+        version: 4.6.5
 
   packages/memory:
     dependencies:

@@ -19,6 +19,8 @@ export interface AgentAction {
   startedAt?: number;
   finishedAt?: number;
   attempt: number;
+  /** Action ids that must complete successfully before this action may start. */
+  dependsOn?: ActionId[];
   metadata?: JsonObject;
 }
 
@@ -27,4 +29,3 @@ export interface ActionRecord extends AgentAction {
   error?: JsonObject;
   policy?: JsonObject;
 }
-

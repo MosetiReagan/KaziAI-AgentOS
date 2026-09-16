@@ -1,0 +1,29 @@
+{
+  "name": "@kazi-ai/agentos-executor",
+  "version": "0.1.0",
+  "description": "Policy-checked, journaled, DAG-aware tool execution for KaziAI AgentOS.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "tsc -b --clean"
+  },
+  "dependencies": {
+    "@kazi-ai/agentos-core": "workspace:*",
+    "@kazi-ai/agentos-policies": "workspace:*"
+  },
+  "devDependencies": {
+    "@kazi-ai/agentos-persistence": "workspace:*",
+    "@kazi-ai/agentos-tools": "workspace:*",
+    "zod": "^4.1.11"
+  }
+}
