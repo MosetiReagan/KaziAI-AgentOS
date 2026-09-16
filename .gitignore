@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+vendor/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Build output
+dist/
+build/
+out/
+coverage/
+*.tsbuildinfo
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Logs and runtime data
+logs/
+*.log
+npm-debug.log*
+.cache/
+.pytest_cache/
+.ruff_cache/
+
+# Editors and OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Local agent/tool artifacts
+.codex/tmp/
+.agents/tmp/
