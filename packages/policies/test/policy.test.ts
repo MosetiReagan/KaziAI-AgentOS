@@ -76,6 +76,25 @@ describe('risk classification', () => {
     expect(floored.classify(action('mcp.advanced.tool', {})).risk).toBe('MEDIUM');
   });
 
+  it('trusts a declaration for a tool no rule knows about', () => {
+    // A locally registered tool that declares itself LOW is not silently
+    // escalated to "unknown, therefore approval" — otherwise `defineTool`'s
+    // declaration would be meaningless (spec §13, §23).
+    const classifier = new RiskClassifier(undefined, undefined, {
+      toolRisk: (toolId) => (toolId === 'weather.get' ? 'LOW' : undefined),
+    });
+
+    const declared = classifier.classify(action('weather.get', { city: 'Nairobi' }));
+    expect(declared.risk).toBe('LOW');
+    expect(declared.ruleId).toBe('risk.declared');
+
+    // A tool that declares nothing still defaults to HIGH → approval.
+    expect(classifier.classify(action('mystery.tool', {})).risk).toBe('HIGH');
+    // And a remote tool is matched by the operator's `mcp.*` rule first, where
+    // the declaration can only ever raise risk.
+    expect(classifier.classify(action('mcp.notes.list_notes', {})).risk).toBe('MEDIUM');
+  });
+
   it('gates an approval on a tool that declares itself critical', async () => {
     const engine = new DefaultPolicyEngine({
       rules: DEFAULT_RULES,

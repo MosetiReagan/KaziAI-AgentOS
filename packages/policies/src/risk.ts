@@ -112,9 +112,11 @@ export function commandString(action: Pick<AgentAction, 'arguments'>): string {
 export interface RiskClassifierOptions {
   /**
    * Risk a tool declares about itself. Rules stay argument-aware (a `git push`
-   * is critical even though `git status` is not), but a tool may never be
-   * classified *below* what it declared, so an MCP server or custom tool can
-   * mark itself CRITICAL and always get an approval gate.
+   * is critical even though `git status` is not), and when a rule matches the
+   * declaration is a floor: a tool may never be classified below what it
+   * declared, so a custom tool can mark itself CRITICAL and always get an
+   * approval gate. When *no* rule matches, the declaration is used as-is, so
+   * `defineTool({ risk: 'LOW' })` is meaningful for a locally registered tool.
    */
   toolRisk?(toolId: string): RiskLevel | undefined;
 }
@@ -137,15 +139,23 @@ export class RiskClassifier {
       if (rule.when && !rule.when(action as AgentAction)) continue;
       return this.applyFloor({ risk: rule.risk, ruleId: rule.id, description: rule.description }, declared, action.toolId);
     }
-    return this.applyFloor(
-      {
-        risk: this.defaultRisk,
-        ruleId: 'risk.default',
-        description: `No risk rule matched ${action.toolId}; treated as ${this.defaultRisk}`,
-      },
-      declared,
-      action.toolId,
-    );
+    // No rule matched: the tool's own declaration is the most specific
+    // information available. It is trusted because it comes from code the
+    // operator installed — remote declarations (MCP) are always matched by an
+    // operator-configured rule such as `mcp.*` first, where the declaration is
+    // only ever a floor.
+    if (declared !== undefined) {
+      return {
+        risk: declared,
+        ruleId: 'risk.declared',
+        description: `${action.toolId} declares itself ${declared}`,
+      };
+    }
+    return {
+      risk: this.defaultRisk,
+      ruleId: 'risk.default',
+      description: `No risk rule matched ${action.toolId}; treated as ${this.defaultRisk}`,
+    };
   }
 
   private applyFloor(
