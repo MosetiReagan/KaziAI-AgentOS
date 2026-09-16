@@ -11,6 +11,12 @@ export interface ToolRegistry {
   get(toolId: string): AnyTool | undefined;
   list(): AnyTool[];
   resolve(ids: string[]): AnyTool[];
+  /** Provider-facing tool definitions for the given ids (all tools by default). */
+  toDefinitions(ids?: string[]): ToolDefinition[];
+  /** Catalog description for operators: id, kind, risk and timeout. */
+  describe(): Array<{ id: string; description: string; kind: string; risk: string; timeoutMs?: number }>;
+  /** The permissions a tool declares for itself, before the run's are applied. */
+  permissionsOf(toolId: string): JsonObject;
 }
 
 const TOOL_ID_PATTERN = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
