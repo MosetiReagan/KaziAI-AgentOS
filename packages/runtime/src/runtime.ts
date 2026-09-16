@@ -1067,8 +1067,14 @@ export class AgentOSRuntime implements AgentRuntime {
 
   /** Load the definition and expose the verifier for a run. */
   private async verifierFor(run: AgentRun, definition?: AgentDefinition): Promise<ProgressVerifier | undefined> {
-    if (typeof this.options.verifier === 'function') return this.options.verifier({ run, ...(definition ? { definition } : {}) });
-    if (this.options.verifier) return this.options.verifier;
+    // A factory that declines (returns undefined) means "no override for this
+    // run", not "this run has no verification": otherwise an agent whose
+    // definition declares verification commands would silently skip it.
+    const override =
+      typeof this.options.verifier === 'function'
+        ? await this.options.verifier({ run, ...(definition ? { definition } : {}) })
+        : this.options.verifier;
+    if (override) return override;
     const commands = definition?.verification.commands ?? [];
     if (commands.length === 0) return undefined;
     return new CompositeVerifier([
