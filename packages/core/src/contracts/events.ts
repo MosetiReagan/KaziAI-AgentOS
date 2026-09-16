@@ -10,6 +10,7 @@ export const EVENT_TYPES = [
   'run.resumed',
   'run.completed',
   'run.failed',
+  'run.error',
   'run.cancelled',
   'run.timed_out',
   'run.retried',
