@@ -1,0 +1,35 @@
+{
+  "name": "@kazi-ai/agentos-cli",
+  "version": "0.1.0",
+  "description": "The `kazi-agent` command line: run, inspect, resume and diagnose AgentOS agents.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "kazi-agent": "./dist/bin.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "tsc -b --clean"
+  },
+  "dependencies": {
+    "@kazi-ai/agentos": "workspace:*",
+    "@kazi-ai/agentos-agent": "workspace:*",
+    "@kazi-ai/agentos-core": "workspace:*",
+    "@kazi-ai/agentos-evaluation": "workspace:*",
+    "@kazi-ai/agentos-persistence": "workspace:*",
+    "@kazi-ai/agentos-policies": "workspace:*",
+    "@kazi-ai/agentos-runtime": "workspace:*",
+    "@kazi-ai/agentos-tools": "workspace:*"
+  }
+}
