@@ -203,6 +203,51 @@ describe('crash recovery', () => {
     expect(readFileSync(`${run.workspaceDir}/durable.txt`, 'utf8')).toBe('hello');
   });
 
+  it("keeps a run's live state durable even with checkpointing switched off", async () => {
+    // The strongest form of "no hidden state" (spec §42, §103): without a single
+    // checkpoint, a *different* worker must still see how far the run got.
+    const first = await createHarness({
+      turns: [
+        {
+          text: 'write one',
+          toolCalls: [{ name: 'filesystem.write', arguments: { path: 'live.txt', content: 'live' } }],
+        },
+        { text: 'the worker dies here', delayMs: 600_000 },
+      ],
+      runtime: {
+        checkpointPolicy: {
+          afterPlan: false,
+          afterToolCall: false,
+          afterStateChange: false,
+          beforeRiskyAction: false,
+          beforeRecovery: false,
+          beforePause: false,
+          intervalMs: 0,
+          everyNSteps: 0,
+        },
+      },
+    });
+    harnesses.push(first);
+
+    const run = await first.runtime.createRun(first.runInput({ goal: 'Write live.txt' }));
+    const abandoned = first.runtime.start(run.id);
+    abandoned.catch(() => undefined);
+    await waitFor(() => existsSync(`${run.workspaceDir}/live.txt`));
+
+    expect(await first.store.checkpoints.list(run.id)).toHaveLength(0);
+
+    const second = await createHarness({ dataDir: first.rootDir, turns: [{ text: 'done' }] });
+    harnesses.push(second);
+    const state = await second.runtime.getState(run.id);
+    expect(state.usage.modelCalls).toBe(1);
+    expect(state.observations.length).toBeGreaterThan(0);
+    expect(state.observations[0]?.source).toBe('tool');
+    expect(state.observations.map((observation) => observation.summary).join(' ')).toContain('filesystem.write');
+
+    await second.runtime.resume(run.id);
+    expect((await second.runtime.getRun(run.id)).status).toBe('COMPLETED');
+  });
+
   it('keeps tenant data isolated across a restart', async () => {
     const first = await createHarness({ turns: [{ text: 'one' }] });
     harnesses.push(first);

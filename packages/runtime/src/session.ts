@@ -15,6 +15,7 @@ import {
   type RunUsage,
 } from '@kazi-ai/agentos-core';
 import type { AgentOSStore } from '@kazi-ai/agentos-persistence';
+import { serializeState } from '@kazi-ai/agentos-checkpoints';
 import type { EventWriter } from './events.js';
 import type { RunControl } from './control.js';
 import type { RunStepRecord } from '@kazi-ai/agentos-persistence';
@@ -27,6 +28,12 @@ export interface RunSessionOptions {
   budgets: BudgetManager;
   spans?: SpanFactory;
   environment?: ExecutionEnvironment;
+  /**
+   * Write the run's current durable state. The runtime passes the state store
+   * through here so an executing run is never only in worker memory: a crash at
+   * any point resumes from what was last written (spec §42, §103).
+   */
+  persistState?(state: import('@kazi-ai/agentos-core').SerializedAgentState, expectedVersion?: number): Promise<void>;
 }
 
 export interface RunSessionInput {
@@ -214,6 +221,10 @@ export class RunSession {
 
   async persist(): Promise<void> {
     const expected = this.run.stateVersion;
+    // The state store versions independently of the run row (a run's version is
+    // bumped by lifecycle transitions that carry no new state), so the expected
+    // version is the one the stored state itself carries.
+    const expectedStateVersion = this.state.stateVersion;
     this.run.stateVersion = expected + 1;
     this.run.updatedAt = this.now;
     this.state.stateVersion = this.run.stateVersion;
@@ -221,6 +232,13 @@ export class RunSession {
     this.state.usage = this.run.usage;
     await this.options.store.runs.update(this.run, expected);
     await this.options.store.counters.saveUsage(this.run.id, this.run.usage);
+    // Durable execution (spec §42): the run's live state is written alongside
+    // the run row, so another worker can continue this run with no process
+    // memory — after a pause, a redeploy or a hard crash.
+    await this.options.persistState?.(
+      serializeState({ run: this.run, state: this.state, committedActions: this.committed }),
+      expectedStateVersion,
+    );
   }
 
   async complete(): Promise<void> {

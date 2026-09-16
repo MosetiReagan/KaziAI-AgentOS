@@ -56,7 +56,7 @@ import {
 import { ApprovalManager, DefaultPolicyEngine, RiskClassifier } from '@kazi-ai/agentos-policies';
 import { ContextManager } from '@kazi-ai/agentos-context';
 import { MemoryManager } from '@kazi-ai/agentos-memory';
-import { CheckpointManager, serializeState } from '@kazi-ai/agentos-checkpoints';
+import { CheckpointManager, serializeState, type CheckpointPolicy } from '@kazi-ai/agentos-checkpoints';
 import { DefaultRecoveryEngine, RetryEngine } from '@kazi-ai/agentos-recovery';
 import { Executor } from '@kazi-ai/agentos-executor';
 import { DeterministicPlanner, LlmPlanner } from '@kazi-ai/agentos-planner';
@@ -89,6 +89,8 @@ export interface AgentOSRuntimeOptions {
   memory?: MemoryManager;
   context?: ContextManager;
   checkpoints?: CheckpointManager;
+  /** Override the checkpoint scheduling policy (spec §30, §77). */
+  checkpointPolicy?: Partial<CheckpointPolicy>;
   recovery?: DefaultRecoveryEngine;
   agents?: AgentRegistry;
   prompts?: PromptResolver;
@@ -174,6 +176,7 @@ export class AgentOSRuntime implements AgentRuntime {
       new CheckpointManager({
         store: this.store.checkpoints,
         logger: this.logger,
+        ...(options.checkpointPolicy ? { policy: options.checkpointPolicy } : {}),
         captureEnvironment: async ({ run }) => {
           const dir = join(this.storeRoot(), 'snapshots', run.id);
           return captureWorkspace({ workspaceDir: run.workspaceDir, storeDir: dir, kind: 'workspace' });

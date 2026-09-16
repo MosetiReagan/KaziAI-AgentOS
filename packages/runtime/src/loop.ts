@@ -91,6 +91,7 @@ export class AgentLoop {
       events: this.options.events,
       budgets: this.options.budgets,
       ...(this.options.spans ? { spans: this.options.spans } : {}),
+      persistState: (state, expectedVersion) => this.options.store.states.save(state, expectedVersion),
     });
     try {
       return await this.iterate(session, input);
