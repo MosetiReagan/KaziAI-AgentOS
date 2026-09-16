@@ -18,5 +18,12 @@ export default tseslint.config(
       'prefer-const': 'error',
     },
   },
+  {
+    // Standalone Node scripts (test fixtures, tooling) run in the Node runtime.
+    files: ['**/*.mjs', '**/*.cjs'],
+    languageOptions: {
+      globals: { process: 'readonly', console: 'readonly', Buffer: 'readonly', __dirname: 'readonly', setTimeout: 'readonly', clearTimeout: 'readonly' },
+    },
+  },
 );
 

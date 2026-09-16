@@ -58,7 +58,8 @@ export class McpClient {
         options.onNotification?.(notification);
       },
       onServerRequest: (request) => {
-        void this.answer(request);
+        this.logger.debug('mcp server request', { server: options.serverId, method: request.method });
+        return this.options.onServerRequest?.({ method: request.method, params: request.params });
       },
     });
   }
@@ -153,8 +154,18 @@ export class McpClient {
 
   async listResourceTemplates(): Promise<McpResourceTemplate[]> {
     if (!this.initialized?.capabilities.resources) return [];
-    const page = await this.rpc.request<{ resourceTemplates?: McpResourceTemplate[] }>('resources/templates/list');
-    return page.resourceTemplates ?? [];
+    try {
+      const page = await this.rpc.request<{ resourceTemplates?: McpResourceTemplate[] }>('resources/templates/list');
+      return page.resourceTemplates ?? [];
+    } catch (error) {
+      // Template listing is optional even when resources are supported: a
+      // server that does not implement it simply has no templates.
+      if (isMethodNotFound(error)) {
+        this.logger.debug('mcp server has no resource templates', { server: this.serverId });
+        return [];
+      }
+      throw error;
+    }
   }
 
   async readResource(uri: string): Promise<McpResourceContents[]> {
@@ -190,17 +201,6 @@ export class McpClient {
     await this.rpc.close();
   }
 
-  private async answer(request: { id: string | number; method: string; params?: unknown }): Promise<void> {
-    try {
-      const result = (await this.options.onServerRequest?.({ method: request.method, params: request.params })) ?? {};
-      await this.rpc.respond(request.id, result);
-    } catch (error) {
-      this.logger.warn('declined mcp server request', { server: this.serverId, method: request.method });
-      await this.rpc.respondError(request.id, -32601, `unsupported request: ${request.method}`).catch(() => undefined);
-      void error;
-    }
-  }
-
   private async trace<T>(name: string, fn: () => Promise<T>): Promise<T> {
     const tracing = this.options.tracing;
     if (!tracing) return await fn();
@@ -224,6 +224,14 @@ export class McpClient {
       span.end();
     }
   }
+}
+
+/** True when the server answered a method it does not implement. */
+export function isMethodNotFound(error: unknown): boolean {
+  return (
+    error instanceof McpProtocolError &&
+    (error.details['rpcCode'] as number | undefined) === -32601
+  );
 }
 
 /** Raised when a caller asks for a capability the server did not advertise. */

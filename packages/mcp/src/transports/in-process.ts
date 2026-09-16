@@ -36,6 +36,16 @@ export class InProcessTransport implements McpTransport {
     await this.options.handler(message, reply);
   }
 
+  /**
+   * Deliver a message *from* the server, for notifications, server-initiated
+   * requests and fault injection. Kept separate from `send` so a handler that
+   * talks to the client can never recurse into itself.
+   */
+  emit(message: unknown): void {
+    if (this.closed) return;
+    queueMicrotask(() => this.emitter.emitMessage(message));
+  }
+
   onMessage(handler: (message: unknown) => void): void {
     this.emitter.onMessage(handler);
   }

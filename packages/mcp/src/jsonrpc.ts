@@ -1,4 +1,4 @@
-import { McpProtocolError, McpTimeoutError, McpTransportError } from './errors.js';
+import { McpError, McpProtocolError, McpTimeoutError, McpTransportError } from './errors.js';
 import type { McpTransport } from './transports/types.js';
 
 export interface JsonRpcRequest {
@@ -64,7 +64,13 @@ export interface JsonRpcClientOptions {
   /** Per-request ceiling. A server that never answers must not wedge a run. */
   requestTimeoutMs?: number;
   onNotification?(notification: JsonRpcNotification): void;
-  onServerRequest?(request: { id: string | number; method: string; params?: unknown }): void;
+  /**
+   * Answer a server-initiated request (sampling, roots, elicitation). The
+   * returned value is sent back as the result; returning `undefined` declines
+   * the request so a server is never left waiting for an answer that will not
+   * come.
+   */
+  onServerRequest?(request: { id: string | number; method: string; params?: unknown }): Promise<unknown> | unknown;
   onTransportError?(error: Error): void;
 }
 
@@ -123,6 +129,12 @@ export class JsonRpcClient {
         if (!pending) return;
         this.pending.delete(id);
         clearTimeout(pending.timer);
+        // A classified failure (auth, timeout, protocol) keeps its code: only
+        // genuinely unclassified send errors become transport errors.
+        if (error instanceof McpError) {
+          reject(error);
+          return;
+        }
         reject(
           error instanceof Error
             ? new McpTransportError(this.options.serverId, `failed to send ${method}: ${error.message}`, { cause: error })
@@ -165,6 +177,26 @@ export class JsonRpcClient {
     await this.options.transport.send(message);
   }
 
+  private answerServerRequest(request: { id: string | number; method: string; params?: unknown }): void {
+    const handler = this.options.onServerRequest;
+    if (!handler) {
+      void this.respondError(request.id, JSONRPC_CODES.methodNotFound, `unsupported request: ${request.method}`).catch(() => undefined);
+      return;
+    }
+    void Promise.resolve()
+      .then(() => handler(request))
+      .then(async (result) => {
+        if (result === undefined) {
+          await this.respondError(request.id, JSONRPC_CODES.methodNotFound, `unsupported request: ${request.method}`);
+          return;
+        }
+        await this.respond(request.id, result);
+      })
+      .catch(() => {
+        void this.respondError(request.id, JSONRPC_CODES.internalError, `failed to handle ${request.method}`).catch(() => undefined);
+      });
+  }
+
   private handleMessage(message: unknown): void {
     if (isJsonRpcNotification(message)) {
       this.options.onNotification?.(message);
@@ -175,7 +207,7 @@ export class JsonRpcClient {
       // A server-initiated request must be answered, otherwise the server may
       // block waiting for us.
       if (candidate.method !== undefined && candidate.id !== undefined) {
-        this.options.onServerRequest?.({
+        this.answerServerRequest({
           id: candidate.id as string | number,
           method: String(candidate.method),
           params: (message as { params?: unknown }).params,

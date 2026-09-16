@@ -42,6 +42,24 @@ importers:
         specifier: ^4.6.5
         version: 4.6.5
 
+  packages/agent:
+    dependencies:
+      '@kazi-ai/agentos-checkpoints':
+        specifier: workspace:*
+        version: link:../checkpoints
+      '@kazi-ai/agentos-core':
+        specifier: workspace:*
+        version: link:../core
+      '@kazi-ai/agentos-recovery':
+        specifier: workspace:*
+        version: link:../recovery
+      yaml:
+        specifier: ^2.9.1
+        version: 2.9.1
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
+
   packages/checkpoints:
     dependencies:
       '@kazi-ai/agentos-core':
@@ -82,6 +100,22 @@ importers:
       zod:
         specifier: ^4.1.11
         version: 4.6.5
+
+  packages/mcp:
+    dependencies:
+      '@kazi-ai/agentos-core':
+        specifier: workspace:*
+        version: link:../core
+      '@kazi-ai/agentos-tracing':
+        specifier: workspace:*
+        version: link:../tracing
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@kazi-ai/agentos-tools':
+        specifier: workspace:*
+        version: link:../tools
 
   packages/memory:
     dependencies:
@@ -147,6 +181,48 @@ importers:
       '@kazi-ai/agentos-persistence':
         specifier: workspace:*
         version: link:../persistence
+
+  packages/runtime:
+    dependencies:
+      '@kazi-ai/agentos-agent':
+        specifier: workspace:*
+        version: link:../agent
+      '@kazi-ai/agentos-checkpoints':
+        specifier: workspace:*
+        version: link:../checkpoints
+      '@kazi-ai/agentos-context':
+        specifier: workspace:*
+        version: link:../context
+      '@kazi-ai/agentos-core':
+        specifier: workspace:*
+        version: link:../core
+      '@kazi-ai/agentos-executor':
+        specifier: workspace:*
+        version: link:../executor
+      '@kazi-ai/agentos-memory':
+        specifier: workspace:*
+        version: link:../memory
+      '@kazi-ai/agentos-persistence':
+        specifier: workspace:*
+        version: link:../persistence
+      '@kazi-ai/agentos-planner':
+        specifier: workspace:*
+        version: link:../planner
+      '@kazi-ai/agentos-policies':
+        specifier: workspace:*
+        version: link:../policies
+      '@kazi-ai/agentos-providers':
+        specifier: workspace:*
+        version: link:../providers
+      '@kazi-ai/agentos-recovery':
+        specifier: workspace:*
+        version: link:../recovery
+      '@kazi-ai/agentos-tools':
+        specifier: workspace:*
+        version: link:../tools
+      '@kazi-ai/agentos-tracing':
+        specifier: workspace:*
+        version: link:../tracing
 
   packages/tools:
     dependencies:

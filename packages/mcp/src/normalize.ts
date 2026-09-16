@@ -63,7 +63,7 @@ export function normalizeToolResult(result: { content?: McpContentBlock[]; struc
       continue;
     }
     if (block.type === 'image' || block.type === 'audio') {
-      const bytes = typeof block.data === 'string' ? Math.floor((block.data.length * 3) / 4) : 0;
+      const bytes = typeof block.data === 'string' ? Buffer.byteLength(block.data, 'base64') : 0;
       binaryBytes += bytes;
       blocks.push({ type: block.type, mimeType: block.mimeType ?? 'application/octet-stream', bytes });
       continue;
@@ -77,7 +77,7 @@ export function normalizeToolResult(result: { content?: McpContentBlock[]; struc
         uri: typeof resource['uri'] === 'string' ? resource['uri'] : (block.uri ?? ''),
         ...(typeof resource['mimeType'] === 'string' ? { mimeType: resource['mimeType'] } : {}),
         ...(text !== undefined ? { text: truncate(text) } : {}),
-        ...(typeof resource['blob'] === 'string' ? { bytes: Math.floor((resource['blob'].length * 3) / 4) } : {}),
+        ...(typeof resource['blob'] === 'string' ? { bytes: Buffer.byteLength(resource['blob'], 'base64') } : {}),
       });
       continue;
     }
