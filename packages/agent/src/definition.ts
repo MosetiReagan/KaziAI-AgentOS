@@ -205,6 +205,26 @@ export const agentDefinitionSchema = z.strictObject({
 
 export type RawAgentDefinition = z.input<typeof agentDefinitionSchema>;
 
+const TOOL_ID_PATTERN = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
+
+/**
+ * Expand tool families in a definition (spec §6): `filesystem` means
+ * `filesystem.*`, so the specification's example resolves to the tools the
+ * registry actually holds. Fully qualified ids pass through untouched.
+ */
+export function expandToolFamilies(ids: string[]): string[] {
+  const expanded: string[] = [];
+  for (const id of ids) {
+    const base = id.endsWith('.*') ? id.slice(0, -2) : id;
+    if (base !== '*' && !TOOL_ID_PATTERN.test(base)) {
+      throw new ValidationError(`Invalid tool id "${id}" in the agent definition`, { toolId: id });
+    }
+    const normalized = id.includes('.') || id.includes('_') || id === '*' ? id : `${id}.*`;
+    if (!expanded.includes(normalized)) expanded.push(normalized);
+  }
+  return expanded;
+}
+
 /**
  * Validate a raw agent definition object. Unknown keys are rejected so a typo
  * in a YAML file fails loudly at load time rather than silently changing
@@ -241,7 +261,9 @@ export function parseAgentDefinition(input: unknown): AgentDefinition {
         }
       : {}),
     systemPrompt: raw.system_prompt,
-    tools: raw.tools,
+    // Families are expanded here so every consumer (SDK, CLI, API, worker)
+    // resolves `filesystem` to the tools the registry holds.
+    tools: expandToolFamilies(raw.tools),
     memory: memoryOf(raw.memory),
     planning: planningOf(raw.planning),
     verification: verificationOf(raw.verification),

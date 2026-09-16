@@ -94,7 +94,8 @@ describe('parseAgentDefinitionYaml', () => {
     expect(definition.model).toEqual({ provider: 'openai-compatible', model: 'gpt-5.6', temperature: 0.2 });
     expect(definition.providers?.fallback).toEqual([{ provider: 'ollama', model: 'llama-local' }]);
     expect(definition.systemPrompt).toContain('software engineering agent');
-    expect(definition.tools).toEqual(['filesystem.read', 'filesystem.write', 'terminal.exec', 'git']);
+    // A bare family name is expanded so the registry can resolve it (spec §6).
+    expect(definition.tools).toEqual(['filesystem.read', 'filesystem.write', 'terminal.exec', 'git.*']);
     expect(definition.memory).toEqual({ enabled: true, ttlSeconds: 86_400 });
     expect(definition.planning).toEqual({ enabled: true, maxSteps: 40 });
     expect(definition.verification).toEqual({ enabled: true, commands: ['pnpm test'] });
@@ -192,6 +193,25 @@ describe('parseAgentDefinitionYaml', () => {
         recovery: { tool_timeout: { strategy: 'retry', max_attempts: -1 } },
       }),
     ).toThrow(/non-negative integer/);
+  });
+
+  it('expands tool families and rejects malformed tool ids', () => {
+    const base = {
+      id: 'family-agent',
+      version: '1.0.0',
+      model: { provider: 'fake', model: 'fake-1' },
+      system_prompt: 'You are a test agent.',
+      tools: ['filesystem', 'terminal.exec', 'mcp.github.create_issue'],
+    };
+    expect(parseAgentDefinition(base).tools).toEqual([
+      'filesystem.*',
+      'terminal.exec',
+      'mcp.github.create_issue',
+    ]);
+
+    expect(() => parseAgentDefinition({ ...base, tools: ['Filesystem Read'] })).toThrow(
+      /Invalid tool id/,
+    );
   });
 
   it('round-trips through the stored (snake_case) form', () => {
