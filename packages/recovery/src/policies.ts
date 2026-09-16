@@ -40,20 +40,19 @@ export const DEFAULT_RECOVERY_POLICIES: Record<string, RecoveryPolicy> = {
 
 export type RecoveryPolicyMap = Record<string, RecoveryPolicy>;
 
+/** Shape of the `recovery:` block as it appears in configuration files. */
 export interface RecoveryPolicyDocument {
-  recovery?: Record<
-    string,
-    | RecoveryStrategy
-    | {
-        strategy: RecoveryStrategy;
-        max_attempts?: number;
-        maxAttempts?: number;
-        base_delay_ms?: number;
-        baseDelayMs?: number;
-        max_delay_ms?: number;
-        maxDelayMs?: number;
-      }
-  >;
+  recovery?: Record<string, unknown>;
+}
+
+interface RecoveryPolicyEntry {
+  strategy?: unknown;
+  max_attempts?: unknown;
+  maxAttempts?: unknown;
+  base_delay_ms?: unknown;
+  baseDelayMs?: unknown;
+  max_delay_ms?: unknown;
+  maxDelayMs?: unknown;
 }
 
 /**
@@ -66,20 +65,33 @@ export function parseRecoveryPolicies(document: RecoveryPolicyDocument | undefin
   for (const [kind, value] of Object.entries(entries)) {
     if (typeof value === 'string') {
       assertStrategy(value, kind);
-      policies[kind] = { kind, strategy: value };
+      policies[kind] = { kind, strategy: value as RecoveryStrategy };
       continue;
     }
-    assertStrategy(value.strategy, kind);
-    const policy: RecoveryPolicy = { kind, strategy: value.strategy };
-    const maxAttempts = value.maxAttempts ?? value.max_attempts;
-    const baseDelayMs = value.baseDelayMs ?? value.base_delay_ms;
-    const maxDelayMs = value.maxDelayMs ?? value.max_delay_ms;
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+      throw new ValidationError(`Recovery policy for "${kind}" must be a strategy name or a mapping`, { kind });
+    }
+    const entry = value as RecoveryPolicyEntry;
+    assertStrategy(String(entry.strategy), kind);
+    const strategy = entry.strategy as RecoveryStrategy;
+    const policy: RecoveryPolicy = { kind, strategy };
+    const maxAttempts = positiveInt(entry.maxAttempts ?? entry.max_attempts, `${kind}.max_attempts`);
+    const baseDelayMs = positiveInt(entry.baseDelayMs ?? entry.base_delay_ms, `${kind}.base_delay_ms`);
+    const maxDelayMs = positiveInt(entry.maxDelayMs ?? entry.max_delay_ms, `${kind}.max_delay_ms`);
     if (maxAttempts !== undefined) policy.maxAttempts = maxAttempts;
     if (baseDelayMs !== undefined) policy.baseDelayMs = baseDelayMs;
     if (maxDelayMs !== undefined) policy.maxDelayMs = maxDelayMs;
     policies[kind] = policy;
   }
   return policies;
+}
+
+function positiveInt(value: unknown, field: string): number | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+    throw new ValidationError(`${field} must be a non-negative integer`, { field, value: String(value) });
+  }
+  return value;
 }
 
 function assertStrategy(strategy: string, kind: string): void {

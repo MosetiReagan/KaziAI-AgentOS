@@ -88,6 +88,17 @@ describe('parseRecoveryPolicies', () => {
     expect(policies['environment_failure']?.maxDelayMs).toBe(500);
   });
 
+  it('rejects malformed entries instead of crashing at runtime', () => {
+    expect(() => parseRecoveryPolicies({ recovery: { tool_timeout: { strategy: 'retry', max_attempts: -1 } } })).toThrow(
+      /non-negative integer/,
+    );
+    expect(() => parseRecoveryPolicies({ recovery: { tool_timeout: { strategy: 'retry', max_attempts: 'many' } } })).toThrow(
+      /non-negative integer/,
+    );
+    expect(() => parseRecoveryPolicies({ recovery: { tool_timeout: 42 } })).toThrow(/must be a strategy name or a mapping/);
+    expect(() => parseRecoveryPolicies({ recovery: { tool_timeout: { max_attempts: 3 } } })).toThrow(/Unknown recovery strategy/);
+  });
+
   it('rejects unknown strategies instead of silently disabling recovery', () => {
     expect(() => parseRecoveryPolicies({ recovery: { tool_timeout: { strategy: 'pray' as never } } })).toThrow(
       /Unknown recovery strategy/,
