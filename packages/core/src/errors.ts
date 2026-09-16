@@ -194,7 +194,9 @@ export class ProviderError extends AgentError {
       message,
       category: 'provider',
       retryable: init.retryable ?? true,
-      idempotency: 'retry-safe',
+      // Retryability is a property of the call, not the vendor: a provider call
+      // that triggers billing or a write may be non-idempotent.
+      idempotency: init.idempotency ?? 'retry-safe',
       details: { provider, ...(init.details ?? {}) },
       ...(init.cause !== undefined ? { cause: init.cause } : {}),
     });
