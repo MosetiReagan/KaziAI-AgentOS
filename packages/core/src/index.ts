@@ -12,6 +12,7 @@ export * from './lock.js';
 export * from './budget-manager.js';
 export * from './event-bus.js';
 export * from './config.js';
+export * from './circuit-breaker.js';
 
 export * from './contracts/model.js';
 export * from './contracts/tool.js';
