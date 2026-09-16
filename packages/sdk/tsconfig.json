@@ -1,0 +1,23 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "tsBuildInfoFile": "dist/.tsbuildinfo"
+  },
+  "include": ["src/**/*.ts"],
+  "references": [
+    { "path": "../core" },
+    { "path": "../persistence" },
+    { "path": "../providers" },
+    { "path": "../tools" },
+    { "path": "../policies" },
+    { "path": "../memory" },
+    { "path": "../context" },
+    { "path": "../recovery" },
+    { "path": "../tracing" },
+    { "path": "../executor" },
+    { "path": "../agent" },
+    { "path": "../runtime" }
+  ]
+}

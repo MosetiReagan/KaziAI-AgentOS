@@ -43,3 +43,4 @@ Thumbs.db
 .kazi/
 artifacts/
 *.tsbuildinfo
+.tmp/
