@@ -1,0 +1,44 @@
+{
+  "name": "kazi-ai-agentos",
+  "version": "0.1.0",
+  "private": true,
+  "description": "KaziAI AgentOS is an open-source runtime for building, executing, observing, evaluating, and recovering autonomous AI agents.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@10.23.0",
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild", "@prisma/engines", "prisma", "@swc/core", "sharp"]
+  },
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json",
+    "clean": "tsc -b tsconfig.build.json --clean && rm -rf packages/*/dist apps/*/dist",
+    "typecheck": "tsc -b tsconfig.build.json --dry && tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run --project unit",
+    "test:watch": "vitest --project unit",
+    "test:integration": "vitest run --project integration",
+    "test:e2e": "vitest run --project e2e",
+    "test:security": "vitest run --project security",
+    "test:chaos": "vitest run --project chaos",
+    "test:all": "vitest run",
+    "agent": "tsx packages/cli/src/bin.ts"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^22.20.3",
+    "@vitest/coverage-v8": "^5.0.1",
+    "eslint": "^10.10.0",
+    "prettier": "^3.9.7",
+    "tsx": "^4.23.13",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.70.0",
+    "vitest": "^5.0.1",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.5"
+  }
+}

@@ -38,3 +38,8 @@ Thumbs.db
 # Local agent/tool artifacts
 .codex/tmp/
 .agents/tmp/
+
+# AgentOS run workspaces and local state
+.kazi/
+artifacts/
+*.tsbuildinfo

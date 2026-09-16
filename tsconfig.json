@@ -1,0 +1,32 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@kazi-ai/agentos": ["packages/sdk/src/index.ts"],
+      "@kazi-ai/agentos-core": ["packages/core/src/index.ts"],
+      "@kazi-ai/agentos-providers": ["packages/providers/src/index.ts"],
+      "@kazi-ai/agentos-tools": ["packages/tools/src/index.ts"],
+      "@kazi-ai/agentos-policies": ["packages/policies/src/index.ts"],
+      "@kazi-ai/agentos-memory": ["packages/memory/src/index.ts"],
+      "@kazi-ai/agentos-context": ["packages/context/src/index.ts"],
+      "@kazi-ai/agentos-checkpoints": ["packages/checkpoints/src/index.ts"],
+      "@kazi-ai/agentos-recovery": ["packages/recovery/src/index.ts"],
+      "@kazi-ai/agentos-tracing": ["packages/tracing/src/index.ts"],
+      "@kazi-ai/agentos-planner": ["packages/planner/src/index.ts"],
+      "@kazi-ai/agentos-executor": ["packages/executor/src/index.ts"],
+      "@kazi-ai/agentos-agent": ["packages/agent/src/index.ts"],
+      "@kazi-ai/agentos-runtime": ["packages/runtime/src/index.ts"],
+      "@kazi-ai/agentos-mcp": ["packages/mcp/src/index.ts"],
+      "@kazi-ai/agentos-evaluation": ["packages/evaluation/src/index.ts"],
+      "@kazi-ai/agentos-bench": ["packages/bench/src/index.ts"],
+      "@kazi-ai/agentos-persistence": ["packages/persistence/src/index.ts"]
+    }
+  },
+  "include": ["packages/*/src/**/*.ts", "packages/*/test/**/*.ts", "apps/*/src/**/*.ts", "tests/**/*.ts", "examples/**/*.ts"]
+}
+

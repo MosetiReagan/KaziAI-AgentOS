@@ -1,0 +1,28 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/core" },
+    { "path": "./packages/providers" },
+    { "path": "./packages/tools" },
+    { "path": "./packages/policies" },
+    { "path": "./packages/memory" },
+    { "path": "./packages/context" },
+    { "path": "./packages/checkpoints" },
+    { "path": "./packages/recovery" },
+    { "path": "./packages/tracing" },
+    { "path": "./packages/planner" },
+    { "path": "./packages/executor" },
+    { "path": "./packages/agent" },
+    { "path": "./packages/mcp" },
+    { "path": "./packages/persistence" },
+    { "path": "./packages/evaluation" },
+    { "path": "./packages/bench" },
+    { "path": "./packages/runtime" },
+    { "path": "./packages/sdk" },
+    { "path": "./packages/cli" },
+    { "path": "./apps/api" },
+    { "path": "./apps/worker" },
+    { "path": "./apps/gateway" }
+  ]
+}
+
