@@ -216,6 +216,8 @@ export interface TraceNode {
   risk?: RiskLevel;
   toolId?: string;
   stepId?: string;
+  /** How many events folded into this node (e.g. retries of one action). */
+  attempts?: number;
   detail?: JsonObject;
   children?: TraceNode[];
 }

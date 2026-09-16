@@ -213,6 +213,77 @@ describe('buildTrace', () => {
     expect(trace.nodes.filter((node) => node.kind === 'checkpoint')).toHaveLength(1);
   });
 
+  it('folds a tool request and its terminal event into one node', () => {
+    const events: AgentEvent[] = [
+      event(1, 'tool.requested', { toolId: 'filesystem.read', actionId: 'act_7', idempotency: 'idempotent' }, 1_700_000_000_000),
+      event(2, 'tool.completed', { toolId: 'filesystem.read', actionId: 'act_7', status: 'succeeded' }, 1_700_000_000_500),
+    ];
+    const trace = buildTrace({
+      run: makeRun(),
+      events,
+      // The executor also persists an invocation for the same action.
+      invocations: [
+        {
+          id: 'act_7',
+          toolId: 'filesystem.read',
+          actionId: 'act_7',
+          status: 'succeeded',
+          durationMs: 500,
+          success: true,
+          at: 1_700_000_000_000,
+        },
+      ],
+    });
+
+    const tools = trace.nodes.filter((node) => node.kind === 'tool');
+    expect(tools).toHaveLength(1);
+    expect(tools[0]?.status).toBe('succeeded');
+    expect(tools[0]?.durationMs).toBe(500);
+    expect(trace.summary.toolCalls).toBe(1);
+  });
+
+  it('folds a retried failure onto the same tool node and counts attempts', () => {
+    const events: AgentEvent[] = [
+      event(1, 'tool.requested', { toolId: 'terminal.exec', actionId: 'act_3' }, 1_700_000_000_000),
+      event(2, 'tool.failed', { toolId: 'terminal.exec', actionId: 'act_3', status: 'failed' }, 1_700_000_000_100),
+      event(3, 'tool.failed', { toolId: 'terminal.exec', actionId: 'act_3', status: 'failed' }, 1_700_000_000_400),
+    ];
+    const trace = buildTrace({ run: makeRun(), events });
+    const tools = trace.nodes.filter((node) => node.kind === 'tool');
+    expect(tools).toHaveLength(1);
+    expect(tools[0]?.attempts).toBe(3);
+    expect(trace.summary.toolCalls).toBe(1);
+    expect(trace.summary.failures).toBe(1);
+  });
+
+  it('folds recovery start and completion and skips the matching record', () => {
+    const events: AgentEvent[] = [
+      event(1, 'recovery.started', { kind: 'tool_timeout', attempt: 1 }, 1_700_000_000_000),
+      event(2, 'recovery.completed', { strategy: 'retry_with_backoff', applied: true, attempt: 1 }, 1_700_000_000_900),
+    ];
+    const trace = buildTrace({
+      run: makeRun(),
+      events,
+      recoveries: [{ id: 'rec_run_1_1', attempt: 1, strategy: 'retry_with_backoff', success: true, at: 1_700_000_000_900 }],
+    });
+    const recoveries = trace.nodes.filter((node) => node.kind === 'recovery');
+    expect(recoveries).toHaveLength(1);
+    expect(trace.summary.recoveries).toBe(1);
+  });
+
+  it('uses the checkpoint id from the event so the record is not duplicated', () => {
+    const events: AgentEvent[] = [
+      event(1, 'checkpoint.created', { checkpointId: 'cp_42', sequence: 3, trigger: 'after_tool_call' }, 1_700_000_000_000),
+    ];
+    const trace = buildTrace({
+      run: makeRun(),
+      events,
+      checkpoints: [{ id: 'cp_42', runId: 'run_1', sequence: 3, createdAt: 1_700_000_000_000, stateVersion: 4 }],
+    });
+    expect(trace.nodes.filter((node) => node.kind === 'checkpoint')).toHaveLength(1);
+    expect(trace.summary.checkpoints).toBe(1);
+  });
+
   it('orders nodes chronologically', () => {
     const events: AgentEvent[] = [
       event(1, 'step.started', { stepId: 'stp_a' }, 1_700_000_000_900),
