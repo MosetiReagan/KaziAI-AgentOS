@@ -42,6 +42,12 @@ importers:
         specifier: ^4.6.5
         version: 4.6.5
 
+  packages/core:
+    dependencies:
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
+
 packages:
 
   '@babel/helper-string-parser@7.29.7':
