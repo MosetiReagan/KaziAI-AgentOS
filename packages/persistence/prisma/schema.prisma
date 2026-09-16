@@ -1,0 +1,523 @@
+// KaziAI AgentOS Postgres schema.
+// Every multi-tenant table carries organization_id/project_id so tenant
+// isolation is enforced at the data layer, not only in application code.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Organization {
+  id        String   @id
+  name      String
+  slug      String   @unique
+  settings  Json?
+  createdAt DateTime @default(now())
+
+  projects  Project[]
+  users     User[]
+  apiKeys   ApiKey[]
+  runs      Run[]
+  agents    Agent[]
+  policies  Policy[]
+  memories  MemoryEntry[]
+  approvals Approval[]
+  usage     ModelUsage[]
+
+  @@map("organizations")
+}
+
+model Project {
+  id             String   @id
+  organizationId String
+  name           String
+  slug           String
+  settings       Json?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  runs         Run[]
+  agents       Agent[]
+  policies     Policy[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId])
+  @@map("projects")
+}
+
+model User {
+  id             String   @id
+  organizationId String
+  email          String
+  name           String?
+  role           String
+  disabled       Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, email])
+  @@index([organizationId])
+  @@map("users")
+}
+
+model ApiKey {
+  id             String    @id
+  organizationId String
+  projectId      String?
+  name           String
+  hash           String
+  prefix         String    @unique
+  role           String
+  createdAt      DateTime  @default(now())
+  lastUsedAt     DateTime?
+  expiresAt      DateTime?
+  revokedAt      DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("api_keys")
+}
+
+model Agent {
+  id             String   @id
+  organizationId String
+  projectId      String
+  name           String
+  createdAt      DateTime @default(now())
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  versions     AgentVersion[]
+
+  @@index([organizationId, projectId])
+  @@map("agents")
+}
+
+model AgentVersion {
+  id         String   @id @default(uuid())
+  agentId    String
+  version    String
+  source     String
+  definition Json
+  hash       String
+  createdAt  DateTime @default(now())
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, version])
+  @@index([agentId])
+  @@map("agent_versions")
+}
+
+model Run {
+  id             String    @id
+  organizationId String
+  projectId      String
+  agentId        String
+  goal           String
+  status         String
+  stateVersion   Int       @default(0)
+  config         Json
+  limits         Json
+  usage          Json
+  plan           Json?
+  currentStepId  String?
+  parentRunId    String?
+  rootRunId      String
+  traceId        String
+  workspaceDir   String
+  error          Json?
+  labels         Json?
+  metadata       Json?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  startedAt      DateTime?
+  finishedAt     DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  steps        RunStep[]
+  events       RunEvent[]
+  actions      RunAction[]
+  checkpoints  Checkpoint[]
+  approvals    Approval[]
+  artifacts    Artifact[]
+  failures     Failure[]
+  recoveries   RecoveryAttempt[]
+  invocations  ToolInvocation[]
+  decisions    PolicyDecision[]
+  usageRecords ModelUsage[]
+  stateLog     RunStateSnapshot?
+
+  @@index([organizationId, projectId, createdAt])
+  @@index([status])
+  @@index([rootRunId])
+  @@index([parentRunId])
+  @@map("runs")
+}
+
+model RunStep {
+  id          String    @id
+  runId       String
+  index       Int
+  description String
+  phase       String
+  status      String
+  toolId      String?
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  durationMs  Int?
+  detail      Json?
+  error       Json?
+
+  run Run @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, index])
+  @@index([runId])
+  @@map("run_steps")
+}
+
+model RunEvent {
+  id             String   @id
+  runId          String
+  type           String
+  version        Int
+  sequence       Int
+  organizationId String
+  projectId      String
+  traceId        String?
+  data           Json
+  at             DateTime @default(now())
+
+  run Run @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, sequence])
+  @@index([runId, sequence])
+  @@index([organizationId, at])
+  @@map("run_events")
+}
+
+model RunAction {
+  id             String    @id
+  runId          String
+  sequence       Int
+  stepId         String?
+  toolId         String
+  argumentsHash  String
+  arguments      Json
+  idempotencyKey String
+  idempotency    String
+  status         String
+  attempt        Int       @default(1)
+  risk           String?
+  result         Json?
+  error          Json?
+  policy         Json?
+  startedAt      DateTime  @default(now())
+  finishedAt     DateTime?
+
+  run Run @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, idempotencyKey])
+  @@index([runId, sequence])
+  @@index([status])
+  @@map("run_actions")
+}
+
+model Plan {
+  id        String   @id
+  runId     String
+  objective String
+  version   Int
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  steps PlanStep[]
+
+  @@index([runId])
+  @@map("plans")
+}
+
+model PlanStep {
+  id           String   @id
+  planId       String
+  index        Int
+  description  String
+  toolId       String?
+  status       String
+  dependsOn    String[]
+  verification String?
+  result       Json?
+  error        Json?
+  startedAt    DateTime?
+  finishedAt   DateTime?
+
+  plan Plan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, index])
+  @@map("plan_steps")
+}
+
+model Checkpoint {
+  id                  String   @id
+  runId               String
+  sequence            Int
+  stateVersion        Int
+  label               String?
+  state               Json
+  contextSnapshot     Json
+  environmentSnapshot Json?
+  createdAt           DateTime @default(now())
+
+  run Run @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, sequence])
+  @@index([runId, sequence])
+  @@map("checkpoints")
+}
+
+model RunStateSnapshot {
+  runId         String   @id
+  status        String
+  stateVersion  Int
+  goal          String
+  config        Json
+  usage         Json
+  plan          Json?
+  currentStepId String?
+  observations  Json
+  context       Json
+  committed     Json
+  pendingAction Json?
+  updatedAt     DateTime @default(now())
+
+  run Run @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@map("run_state_snapshots")
+}
+
+model MemoryEntry {
+  id             String    @id
+  organizationId String
+  projectId      String?
+  runId          String?
+  agentId        String?
+  type           String
+  content        String
+  value          Json?
+  importance     Float
+  confidence     Float
+  source         String
+  trust          String
+  tags           String[]
+  metadata       Json?
+  accessCount    Int       @default(0)
+  createdAt      DateTime  @default(now())
+  expiresAt      DateTime?
+  lastAccessedAt DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, projectId, type])
+  @@index([runId])
+  @@index([expiresAt])
+  @@map("memory_entries")
+}
+
+model Approval {
+  id                 String    @id
+  runId              String
+  organizationId     String
+  projectId          String
+  actionId           String
+  toolId             String
+  arguments          Json
+  actionHash         String
+  risk               String
+  reason             String
+  summary            String
+  status             String
+  requestedAt        DateTime  @default(now())
+  decidedAt          DateTime?
+  decidedBy          String?
+  decisionReason     String?
+  modifiedArguments  Json?
+  expiresAt          DateTime?
+  metadata           Json?
+
+  run          Run          @relation(fields: [runId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([status, requestedAt])
+  @@index([runId])
+  @@index([organizationId, status])
+  @@map("approvals")
+}
+
+model Policy {
+  id             String   @id
+  organizationId String
+  projectId      String
+  name           String
+  version        Int
+  definition     Json
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  decisions    PolicyDecision[]
+
+  @@index([organizationId, projectId])
+  @@map("policies")
+}
+
+model PolicyDecision {
+  id       String   @id
+  runId    String
+  actionId String?
+  policyId String?
+  toolId   String
+  outcome  String
+  ruleId   String
+  reason   String
+  risk     String
+  at       DateTime @default(now())
+
+  run    Run     @relation(fields: [runId], references: [id], onDelete: Cascade)
+  policy Policy? @relation(fields: [policyId], references: [id], onDelete: SetNull)
+
+  @@index([runId])
+  @@index([outcome])
+  @@map("policy_decisions")
+}
+
+model Artifact {
+  id             String   @id
+  runId          String
+  organizationId String
+  projectId      String
+  name           String
+  path           String
+  sha256         String
+  size           Int
+  mimeType       String
+  createdAt      DateTime @default(now())
+
+  run Run @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+  @@index([organizationId, createdAt])
+  @@map("artifacts")
+}
+
+model Provider {
+  id             String   @id
+  organizationId String
+  kind           String
+  name           String
+  baseUrl        String?
+  config         Json?
+  enabled        Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  @@unique([organizationId, name])
+  @@map("providers")
+}
+
+model ModelUsage {
+  id                String   @id
+  runId             String
+  organizationId    String
+  projectId         String
+  provider          String
+  model             String
+  inputTokens       Int
+  outputTokens      Int
+  cachedInputTokens Int?
+  reasoningTokens   Int?
+  latencyMs         Int
+  costUsd           Decimal? @db.Decimal(12, 6)
+  success           Boolean
+  at                DateTime @default(now())
+
+  run          Run          @relation(fields: [runId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+  @@index([organizationId, at])
+  @@map("model_usage")
+}
+
+model Tool {
+  id             String   @id
+  organizationId String?
+  toolId         String
+  kind           String
+  description    String
+  permissions    Json?
+  schema         Json?
+  createdAt      DateTime @default(now())
+
+  @@unique([organizationId, toolId])
+  @@map("tools")
+}
+
+model ToolInvocation {
+  id         String   @id
+  runId      String
+  toolId     String
+  actionId   String
+  status     String
+  durationMs Int
+  success    Boolean
+  at         DateTime @default(now())
+
+  run Run @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+  @@index([toolId])
+  @@map("tool_invocations")
+}
+
+model Failure {
+  id        String   @id
+  runId     String
+  stepId    String?
+  toolId    String?
+  code      String
+  category  String
+  message   String
+  retryable Boolean
+  terminal  Boolean
+  detail    Json?
+  at        DateTime @default(now())
+
+  run Run @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+  @@index([category])
+  @@map("failures")
+}
+
+model RecoveryAttempt {
+  id        String   @id
+  runId     String
+  failureId String?
+  attempt   Int
+  strategy  String
+  decision  Json
+  result    Json?
+  success   Boolean
+  at        DateTime @default(now())
+
+  run Run @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+  @@map("recovery_attempts")
+}

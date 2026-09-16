@@ -9,6 +9,9 @@ export interface JournalEntry {
   actionId: string;
   idempotencyKey: string;
   toolId: string;
+  /** Normalized arguments captured at intent time, used for post-crash forensics. */
+  arguments?: JsonValue;
+  idempotency?: 'idempotent' | 'retry-safe' | 'non-idempotent' | 'unknown';
   argumentsHash: string;
   status: ActionStatus;
   attempt: number;
@@ -40,4 +43,3 @@ export interface ActionJournal {
   pending(runId: string): Promise<JournalEntry[]>;
   lastCommitted(runId: string): Promise<JournalEntry | undefined>;
 }
-
