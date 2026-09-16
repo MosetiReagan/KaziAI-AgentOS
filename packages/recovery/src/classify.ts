@@ -26,6 +26,8 @@ export const DEFAULT_FAILURE_RULES: FailureRule[] = [
   { code: 'provider.unavailable', kind: 'provider_unavailable', risk: 'LOW' },
   { code: 'provider.*', kind: 'provider_error', risk: 'MEDIUM' },
   { code: 'environment.*', kind: 'environment_failure', risk: 'HIGH' },
+  { code: 'verification.failed', kind: 'verification_failed', risk: 'LOW' },
+  { code: 'workspace.*', kind: 'environment_failure', risk: 'MEDIUM' },
   { code: 'timeout', kind: 'operation_timeout', risk: 'LOW' },
   { code: 'budget.exceeded', kind: 'budget_exceeded', risk: 'MEDIUM' },
   { code: 'policy.denied', kind: 'policy_denied', risk: 'HIGH' },

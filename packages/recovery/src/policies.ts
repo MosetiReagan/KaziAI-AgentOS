@@ -28,6 +28,7 @@ export const DEFAULT_RECOVERY_POLICIES: Record<string, RecoveryPolicy> = {
   authentication_failure: { kind: 'authentication_failure', strategy: 'ask_human', maxAttempts: 1 },
   environment_failure: { kind: 'environment_failure', strategy: 'restore_checkpoint', maxAttempts: 2 },
   state_conflict: { kind: 'state_conflict', strategy: 'retry_with_backoff', maxAttempts: 3, baseDelayMs: 250, maxDelayMs: 5_000 },
+  verification_failed: { kind: 'verification_failed', strategy: 'replan', maxAttempts: 2 },
   resource_exhausted: { kind: 'resource_exhausted', strategy: 'retry_with_backoff', maxAttempts: 3, baseDelayMs: 2_000, maxDelayMs: 30_000 },
   budget_exceeded: { kind: 'budget_exceeded', strategy: 'terminate', maxAttempts: 0 },
   policy_denied: { kind: 'policy_denied', strategy: 'terminate', maxAttempts: 0 },

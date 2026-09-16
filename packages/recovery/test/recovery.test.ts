@@ -56,6 +56,7 @@ describe('FailureClassifier', () => {
     expect(classifier.classify(new ProviderError('openai-compatible', 'timed out', { code: 'provider.timeout' })).kind).toBe('provider_unavailable');
     expect(classifier.classify(new ProviderError('openai-compatible', 'bad key', { code: 'provider.authentication' })).kind).toBe('authentication_failure');
     expect(classifier.classify(new AgentError({ code: 'budget.exceeded', message: 'over', category: 'budget' })).kind).toBe('budget_exceeded');
+    expect(classifier.classify(new AgentError({ code: 'verification.failed', message: 'tests failed', category: 'validation' })).kind).toBe('verification_failed');
   });
 
   it('never assumes an unknown error is retryable', () => {
@@ -380,6 +381,15 @@ describe('DefaultRecoveryEngine', () => {
     const decision = await engine.decide(context);
     expect(decision.strategy).toBe('terminate');
     expect(decision.reason).toContain('exhausted');
+  });
+
+  it('re-plans when verification fails instead of giving up', async () => {
+    const engine = new DefaultRecoveryEngine();
+    const context = contextFor(
+      new AgentError({ code: 'verification.failed', message: 'tests still failing', category: 'validation' }),
+    );
+    const decision = await engine.decide(context);
+    expect(decision.strategy).toBe('replan');
   });
 
   it('re-plans when the model produced invalid arguments', async () => {
