@@ -39,6 +39,13 @@ describe('budget manager', () => {
     expect(report.exceeded[0]?.dimension).toBe('durationMs');
   });
 
+  it('does not fail a run before it uses a zero limit', () => {
+    const report = manager.check('run_1', usage(), { maxRecoveryAttempts: 0, maxCostUsd: 0 }, 0);
+    expect(report.exceeded).toHaveLength(0);
+    const used = manager.check('run_1', usage({ recoveryCount: 1 }), { maxRecoveryAttempts: 0 }, 0);
+    expect(used.exceeded[0]?.dimension).toBe('recoveryAttempts');
+  });
+
   it('treats a zero limit as "not permitted"', () => {
     const report = manager.check('run_1', usage({ networkRequests: 1 }), { maxNetworkRequests: 0 }, 0);
     expect(report.exceeded[0]?.dimension).toBe('networkRequests');

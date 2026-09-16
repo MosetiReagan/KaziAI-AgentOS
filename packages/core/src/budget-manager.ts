@@ -40,13 +40,17 @@ export class DefaultBudgetManager implements BudgetManager {
         return { dimension: spec.dimension, limit: undefined, used, remaining: undefined, ratio: 0, exceeded: false, warning: false };
       }
       const ratio = limit <= 0 ? (used > 0 ? 1 : 0) : used / limit;
+      // A zero limit means "no allowance", not "failed before starting": a run
+      // configured with `maxRecoveryAttempts: 0` may execute, it just may not
+      // recover.
+      const exceeded = limit <= 0 ? used > 0 : used >= limit;
       return {
         dimension: spec.dimension,
         limit,
         used,
         remaining: Math.max(0, limit - used),
         ratio,
-        exceeded: used >= limit,
+        exceeded,
         warning: ratio >= this.warningRatio && used < limit,
       };
     });
