@@ -263,12 +263,38 @@ export class Executor {
           durationMs: Date.now() - started,
         };
       }
-      const existingApprovalId = action.metadata?.['approvalId'];
+      // An action keeps the same fingerprint across a pause, so a decision an
+      // operator already made is found again instead of re-requested forever.
+      const existingApprovalId =
+        action.metadata?.['approvalId'] !== undefined
+          ? String(action.metadata['approvalId'])
+          : (await this.options.approvals.findForAction({ runId: request.runId, action }))?.id;
       if (existingApprovalId !== undefined) {
         const approvalId = String(existingApprovalId);
+        const record = await this.options.approvals.get(approvalId);
+        if (record?.status === 'pending') {
+          return {
+            ...base,
+            status: 'awaiting_approval',
+            policy: decision,
+            approvalId,
+            error: new ApprovalRequiredError(approvalId, record.reason),
+            durationMs: Date.now() - started,
+          };
+        }
         try {
           const resolved = await this.options.approvals.resolve({ approvalId, action });
           effectiveArguments = resolved.arguments;
+          return await this.runAuthorized(
+            request,
+            tool,
+            action,
+            effectiveArguments,
+            decision,
+            started,
+            permissions,
+            approvalId,
+          );
         } catch (error) {
           return {
             ...base,
@@ -300,6 +326,27 @@ export class Executor {
       }
     }
 
+    return this.runAuthorized(request, tool, action, effectiveArguments, decision, started, permissions);
+  }
+
+  /** Journal, execute and commit an action that policy has authorized. */
+  private async runAuthorized(
+    request: ExecutionRequest,
+    tool: AgentTool,
+    action: AgentAction,
+    effectiveArguments: JsonValue,
+    decision: PolicyDecision,
+    started: number,
+    permissions: ToolPermissions,
+    approvalId?: string,
+  ): Promise<ActionOutcome> {
+    const base: Omit<ActionOutcome, 'status' | 'durationMs'> = {
+      actionId: action.id as string,
+      toolId: action.toolId,
+      policy: decision,
+      replayed: false,
+      ...(approvalId === undefined ? {} : { approvalId }),
+    };
     const parsed = tool.inputSchema.safeParse(effectiveArguments);
     if (!parsed.success) {
       const error = new ToolInputError(action.toolId, `Invalid arguments: ${parsed.error.message}`, {

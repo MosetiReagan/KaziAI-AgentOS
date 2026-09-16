@@ -111,6 +111,24 @@ export class ApprovalManager {
     return { arguments: approval.modifiedArguments ?? input.action.arguments };
   }
 
+  async get(approvalId: string): Promise<Approval | undefined> {
+    return this.options.store.get(approvalId);
+  }
+
+  /**
+   * Find an approval that was already requested for this exact action, so a
+   * run that waited for a human can use the decision after it resumes instead
+   * of asking again forever (spec §23, §54).
+   */
+  async findForAction(input: { runId: string; action: AgentAction }): Promise<Approval | undefined> {
+    const requested = await this.options.store.list({ runId: input.runId });
+    const hash = actionHash(input.action);
+    const matches = requested
+      .filter((approval) => approval.actionHash === hash && approval.status !== 'cancelled')
+      .sort((left, right) => right.requestedAt - left.requestedAt);
+    return matches[0];
+  }
+
   async cancelForRun(runId: string, reason: string): Promise<number> {
     const pending = await this.options.store.list({ runId, status: 'pending' });
     for (const approval of pending) {

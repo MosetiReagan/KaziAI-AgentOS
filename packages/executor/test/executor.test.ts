@@ -267,6 +267,103 @@ describe('Executor', () => {
     expect(harness.calls).toHaveLength(1);
   });
 
+  it('uses a granted approval after a resume instead of asking again', async () => {
+    const harness = await createHarness({
+      rules: [
+        policyRule({
+          id: 'approve.echo',
+          description: 'echo needs a human',
+          tools: ['test.echo'],
+          outcome: 'REQUIRE_APPROVAL',
+          reason: 'echo requires approval',
+          risk: 'HIGH',
+        }),
+      ],
+    });
+    const action = makeAction({ runId: harness.runId, toolId: 'test.echo', arguments: { value: 'risky' } });
+
+    const parked = (await harness.executor.execute(harness.request([action]))).outcomes[0];
+    expect(parked?.status).toBe('awaiting_approval');
+    await harness.approvals.decide({
+      approvalId: String(parked?.approvalId),
+      decision: 'approve',
+      decidedBy: 'user_1',
+    });
+
+    // The resumed run re-derives the same action: identical tool and arguments,
+    // no approvalId hand-carried in memory.
+    const resumed = makeAction({ runId: harness.runId, toolId: 'test.echo', arguments: { value: 'risky' } });
+    const outcome = await harness.executor.execute(harness.request([resumed]));
+
+    expect(outcome.succeeded).toBe(1);
+    expect(outcome.outcomes[0]?.approvalId).toBe(parked?.approvalId);
+    expect(harness.calls).toHaveLength(1);
+    // Exactly one approval: the human was asked once.
+    expect(await harness.store.approvals.list({ runId: harness.runId })).toHaveLength(1);
+  });
+
+  it('honours a denied approval on a later attempt of the same action', async () => {
+    const harness = await createHarness({
+      rules: [
+        policyRule({
+          id: 'approve.echo',
+          description: 'echo needs a human',
+          tools: ['test.echo'],
+          outcome: 'REQUIRE_APPROVAL',
+          reason: 'echo requires approval',
+          risk: 'HIGH',
+        }),
+      ],
+    });
+    const action = makeAction({ runId: harness.runId, toolId: 'test.echo', arguments: { value: 'risky' } });
+    const parked = (await harness.executor.execute(harness.request([action]))).outcomes[0];
+    await harness.approvals.decide({
+      approvalId: String(parked?.approvalId),
+      decision: 'deny',
+      decidedBy: 'user_1',
+      reason: 'not on a Friday',
+    });
+
+    const resumed = makeAction({ runId: harness.runId, toolId: 'test.echo', arguments: { value: 'risky' } });
+    const outcome = await harness.executor.execute(harness.request([resumed]));
+
+    expect(outcome.denied).toBe(1);
+    expect(outcome.outcomes[0]?.error?.code).toBe('policy.approval_denied');
+    expect(harness.calls).toHaveLength(0);
+  });
+
+  it('re-asks when the action changed after the approval was requested', async () => {
+    const harness = await createHarness({
+      rules: [
+        policyRule({
+          id: 'approve.echo',
+          description: 'echo needs a human',
+          tools: ['test.echo'],
+          outcome: 'REQUIRE_APPROVAL',
+          reason: 'echo requires approval',
+          risk: 'HIGH',
+        }),
+      ],
+    });
+    const parked = (
+      await harness.executor.execute(
+        harness.request([makeAction({ runId: harness.runId, toolId: 'test.echo', arguments: { value: 'first' } })]),
+      )
+    ).outcomes[0];
+    await harness.approvals.decide({
+      approvalId: String(parked?.approvalId),
+      decision: 'approve',
+      decidedBy: 'user_1',
+    });
+
+    const changed = makeAction({ runId: harness.runId, toolId: 'test.echo', arguments: { value: 'second' } });
+    const outcome = await harness.executor.execute(harness.request([changed]));
+
+    expect(outcome.awaitingApproval).toBe(1);
+    expect(harness.calls).toHaveLength(0);
+    expect(await harness.store.approvals.list({ runId: harness.runId })).toHaveLength(2);
+  });
+
   it('never re-runs an action whose commit is already in the journal', async () => {
     const harness = await createHarness();
     const action = makeAction({ runId: harness.runId, toolId: 'test.echo', arguments: { value: 'once' } });
