@@ -128,6 +128,14 @@ export const configSchema = z
         retain: z.number().int().positive().default(50),
       })
       .default({ everySteps: 5, everyMs: 60_000, beforeRiskyActions: true, beforeRecovery: true, retain: 50 }),
+    mcp: z
+      .object({
+        /** Server definitions, validated by @kazi-ai/agentos-mcp at connect time. */
+        servers: z.array(z.record(z.string(), z.unknown())).default([]),
+        /** Refuse to start when a configured server cannot be reached. */
+        strict: z.boolean().default(true),
+      })
+      .default({ servers: [], strict: true }),
     webhooks: z
       .array(
         z.object({
@@ -199,6 +207,7 @@ const ENV_MAP: Record<string, string[]> = {
   KZ_TELEMETRY_ENABLED: ['telemetry', 'enabled'],
   KZ_OTLP_ENDPOINT: ['telemetry', 'otlpEndpoint'],
   KZ_RESEARCH_ENABLED: ['research', 'enabled'],
+  KZ_MCP_STRICT: ['mcp', 'strict'],
   KZ_MEMORY_ENABLED: ['memory', 'enabled'],
   OPENAI_API_KEY: ['providers', 'openai', 'apiKeyRef'],
   OPENAI_BASE_URL: ['providers', 'openai', 'baseUrl'],
@@ -223,6 +232,7 @@ const BOOLEAN_PATHS = new Set([
   'telemetry.enabled',
   'research.enabled',
   'memory.enabled',
+  'mcp.strict',
 ]);
 
 const ARRAY_PATHS = new Set(['api.corsOrigins']);

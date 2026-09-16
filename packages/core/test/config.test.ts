@@ -19,6 +19,22 @@ describe('configuration loading', () => {
     expect(sources).toEqual(['defaults']);
   });
 
+  it('carries MCP server definitions through to the runtime', () => {
+    const { config } = loadConfig({
+      ignoreFiles: true,
+      env: {},
+      cli: {
+        mcp: {
+          servers: [{ id: 'github', transport: { type: 'http', url: 'https://mcp.example/mcp' } }],
+        },
+      },
+    });
+
+    expect(config.mcp.strict).toBe(true);
+    expect(config.mcp.servers).toHaveLength(1);
+    expect((config.mcp.servers[0] as Record<string, unknown>)['id']).toBe('github');
+  });
+
   it('maps environment variables onto nested paths with correct types', () => {
     const { config, sources } = loadConfig({
       ignoreFiles: true,
