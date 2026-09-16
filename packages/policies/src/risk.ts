@@ -109,25 +109,55 @@ export function commandString(action: Pick<AgentAction, 'arguments'>): string {
   return [command, ...argv].join(' ');
 }
 
+export interface RiskClassifierOptions {
+  /**
+   * Risk a tool declares about itself. Rules stay argument-aware (a `git push`
+   * is critical even though `git status` is not), but a tool may never be
+   * classified *below* what it declared, so an MCP server or custom tool can
+   * mark itself CRITICAL and always get an approval gate.
+   */
+  toolRisk?(toolId: string): RiskLevel | undefined;
+}
+
 export class RiskClassifier {
   private readonly rules: RiskRule[];
   private readonly defaultRisk: RiskLevel;
+  private readonly toolRisk: ((toolId: string) => RiskLevel | undefined) | undefined;
 
-  constructor(rules: RiskRule[] = DEFAULT_RISK_RULES, defaultRisk: RiskLevel = 'HIGH') {
+  constructor(rules: RiskRule[] = DEFAULT_RISK_RULES, defaultRisk: RiskLevel = 'HIGH', options: RiskClassifierOptions = {}) {
     this.rules = rules;
     this.defaultRisk = defaultRisk;
+    this.toolRisk = options.toolRisk;
   }
 
   classify(action: Pick<AgentAction, 'toolId' | 'arguments'>): { risk: RiskLevel; ruleId: string; description: string } {
+    const declared = this.toolRisk?.(action.toolId);
     for (const rule of this.rules) {
       if (!toolMatches(rule.tool, action.toolId)) continue;
       if (rule.when && !rule.when(action as AgentAction)) continue;
-      return { risk: rule.risk, ruleId: rule.id, description: rule.description };
+      return this.applyFloor({ risk: rule.risk, ruleId: rule.id, description: rule.description }, declared, action.toolId);
     }
+    return this.applyFloor(
+      {
+        risk: this.defaultRisk,
+        ruleId: 'risk.default',
+        description: `No risk rule matched ${action.toolId}; treated as ${this.defaultRisk}`,
+      },
+      declared,
+      action.toolId,
+    );
+  }
+
+  private applyFloor(
+    classification: { risk: RiskLevel; ruleId: string; description: string },
+    declared: RiskLevel | undefined,
+    toolId: string,
+  ): { risk: RiskLevel; ruleId: string; description: string } {
+    if (declared === undefined || RISK_ORDER[declared] <= RISK_ORDER[classification.risk]) return classification;
     return {
-      risk: this.defaultRisk,
-      ruleId: 'risk.default',
-      description: `No risk rule matched ${action.toolId}; treated as ${this.defaultRisk}`,
+      risk: declared,
+      ruleId: `${classification.ruleId}+declared`,
+      description: `${classification.description}; ${toolId} declares itself ${declared}`,
     };
   }
 

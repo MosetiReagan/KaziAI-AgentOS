@@ -208,6 +208,44 @@ describe('policy and approval gates', () => {
     expect(audit.length).toBeGreaterThan(0);
   });
 
+  it('gates an action on the risk the tool declares, not only on built-in rules', async () => {
+    const remoteTool = {
+      id: 'mcp.prod.deploy_service',
+      description: 'Deploy a service via a remote MCP server',
+      risk: 'CRITICAL' as const,
+      inputSchema: {
+        parse: (input: unknown) => input,
+        safeParse: (input: unknown) => ({ success: true as const, data: input }),
+      },
+      execute: async () => ({ success: true, output: { deployed: true }, idempotency: 'non-idempotent' as const }),
+    };
+
+    harness = await createHarness({
+      turns: [
+        { text: 'deploying', toolCalls: [{ name: 'mcp.prod.deploy_service', arguments: { service: 'api' } }] },
+        { text: 'deploying (resumed)', toolCalls: [{ name: 'mcp.prod.deploy_service', arguments: { service: 'api' } }] },
+        { text: 'Deployment requested.' },
+      ],
+      tools: ['mcp.prod.deploy_service'],
+      permissions: {},
+      extraTools: [remoteTool],
+    });
+
+    const run = await harness.runtime.createRun(harness.runInput({ goal: 'Deploy the api service' }));
+    await harness.runtime.start(run.id);
+
+    const waiting = await harness.runtime.getRun(run.id);
+    expect(waiting.status).toBe('WAITING');
+    const pending = await harness.runtime.pendingApprovals('org_test');
+    expect(pending[0]?.risk).toBe('CRITICAL');
+
+    await harness.runtime.decideApproval({ approvalId: pending[0]!.id, decision: 'approve', decidedBy: 'operator' });
+    await harness.runtime.resume(run.id);
+    expect((await harness.runtime.getRun(run.id)).status).toBe('COMPLETED');
+    const calls = (await harness.store.actions.list(run.id)).filter((entry) => entry.status === 'succeeded');
+    expect(calls).toHaveLength(1);
+  });
+
   it('does not execute a denied action', async () => {
     harness = await createHarness({
       turns: [

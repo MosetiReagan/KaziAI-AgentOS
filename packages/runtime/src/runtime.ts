@@ -149,7 +149,7 @@ export class AgentOSRuntime implements AgentRuntime {
     this.now = options.now ?? (() => Date.now());
     this.store = options.store ?? (undefined as unknown as AgentOSStore);
     this.providers = options.providers;
-    this.policies = options.policies ?? new DefaultPolicyEngine();
+    this.policies = options.policies ?? new DefaultPolicyEngine({ classifier: this.defaultClassifier() });
     this.recorder = options.recorder ?? new InMemorySpanRecorder();
     this.spansBuffer = this.recorder;
     this.spans = options.spans ?? new SpanFactory(this.spansBuffer, this.now);
@@ -291,7 +291,9 @@ export class AgentOSRuntime implements AgentRuntime {
       recovery: this.recovery,
       modelStep,
       registry: this.tools,
-      risk: new RiskClassifier(),
+      // Tool-declared risk is a floor: an MCP server or custom tool that marks
+      // itself CRITICAL always gets an approval gate (spec §24).
+      risk: this.defaultClassifier(),
       spans: this.spans,
       logger: this.logger,
       now: this.now,
@@ -299,6 +301,15 @@ export class AgentOSRuntime implements AgentRuntime {
       revisePlan: async ({ run, state, classification }) => this.revisePlan(run, state, classification),
       ...(options.verifier === undefined ? {} : {}),
     });
+  }
+
+  /**
+   * The classifier every policy decision goes through. It consults the tool
+   * registry so a tool that declares its own risk can never be classified
+   * below it, however the built-in rules are configured.
+   */
+  private defaultClassifier(): RiskClassifier {
+    return new RiskClassifier(undefined, undefined, { toolRisk: (toolId) => this.tools?.get(toolId)?.risk });
   }
 
   static async create(options: Omit<AgentOSRuntimeOptions, 'store'> & { store?: AgentOSStore }): Promise<AgentOSRuntime> {

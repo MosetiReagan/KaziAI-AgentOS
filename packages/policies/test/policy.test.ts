@@ -53,6 +53,38 @@ describe('risk classification', () => {
     expect(classifier.classify(action('database.query', { sql: 'drop table users' })).risk).toBe('CRITICAL');
     expect(classifier.classify(action('unknown.tool', {})).risk).toBe('HIGH');
   });
+
+  it('never classifies a tool below the risk the tool declares', () => {
+    const declared: Record<string, 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'> = {
+      'mcp.prod.dangerous_tool': 'CRITICAL',
+      'mcp.notes.list_notes': 'MEDIUM',
+      'filesystem.read': 'LOW',
+    };
+    const floored = new RiskClassifier(undefined, undefined, { toolRisk: (toolId) => declared[toolId] });
+
+    const critical = floored.classify(action('mcp.prod.dangerous_tool', {}));
+    expect(critical.risk).toBe('CRITICAL');
+    expect(critical.ruleId).toBe('mcp.tool+declared');
+    expect(critical.description).toContain('declares itself CRITICAL');
+    // A declared floor raises risk but never lowers it.
+    expect(floored.classify(action('filesystem.read', { path: 'a' })).risk).toBe('LOW');
+    expect(floored.classify(action('filesystem.delete', { path: 'a' })).risk).toBe('HIGH');
+    expect(floored.classify(action('terminal.exec', { command: 'rm', args: ['-rf', '/'] })).risk).toBe('CRITICAL');
+    // MEDIUM declaration on an unknown tool still beats the HIGH default? No:
+    // the floor only raises, and the default is already higher.
+    expect(floored.classify(action('unknown.tool', {})).risk).toBe('HIGH');
+    expect(floored.classify(action('mcp.advanced.tool', {})).risk).toBe('MEDIUM');
+  });
+
+  it('gates an approval on a tool that declares itself critical', async () => {
+    const engine = new DefaultPolicyEngine({
+      rules: DEFAULT_RULES,
+      classifier: new RiskClassifier(undefined, undefined, { toolRisk: () => 'CRITICAL' }),
+    });
+    const decision = await engine.evaluate(action('mcp.prod.deploy', {}), context);
+    expect(decision.outcome).toBe('REQUIRE_APPROVAL');
+    expect(decision.risk).toBe('CRITICAL');
+  });
 });
 
 describe('policy engine', () => {
