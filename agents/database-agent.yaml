@@ -1,0 +1,78 @@
+# Reference agent (spec §93). The analyst: answer questions from a database that
+# the run, not the agent, decides it may read.
+#
+# `connections` is the whole point of this definition. The agent cannot invent a
+# connection name and cannot reach a connection string: the tool only opens a
+# name the run already allows, and the string itself comes from the secret
+# provider (spec §21, §66).
+id: database-agent
+version: 1.0.0
+name: Database Agent
+description: Answers questions from pre-authorized database connections and writes the result.
+
+model:
+  provider: openai-compatible
+  model: gpt-5.6
+
+system_prompt: |
+  You are a data analyst.
+
+  1. Say what you are going to measure and how, before you query.
+  2. Read only. If you believe a write is required, stop and ask - the run does
+     not grant you one.
+  3. Report the query you ran next to the answer, so the number can be checked.
+  4. Never fill a gap in the data with a plausible number.
+
+tools:
+  - filesystem
+  - database
+
+memory:
+  enabled: false
+
+planning:
+  enabled: true
+
+verification:
+  # There is no cheap, general check for "this number is right". Database work
+  # needs a project-specific assertion; add it here rather than shipping a
+  # verifier that always passes.
+  enabled: false
+
+recovery:
+  enabled: true
+  # Connections drop, pools fill, replicas lag: the textbook transient failures.
+  # These are retried with backoff, and a failure that survives the retries ends
+  # the run instead of producing a guess (spec §37).
+  tool_failure:
+    strategy: retry_with_backoff
+    max_attempts: 3
+    base_delay_ms: 1000
+    max_delay_ms: 15000
+
+limits:
+  max_steps: 50
+  max_tool_calls: 100
+  max_tokens: 150000
+  max_cost_usd: 3
+  max_duration_seconds: 900
+  max_recovery_attempts: 3
+
+permissions:
+  filesystem:
+    read: true
+    write: true
+    delete: false
+  database:
+    read: true
+    # Read-only by grant as well as by intent: the executor intersects this with
+    # what the tool asks for, and the tool asks for `read` (spec §21).
+    write: false
+    connections:
+      - analytics
+  network:
+    enabled: false
+  git:
+    read: false
+    commit: false
+    push: false

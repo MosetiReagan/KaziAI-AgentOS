@@ -1,0 +1,78 @@
+# Reference agent (spec §93). The software engineer: read the repository, run its
+# tests, change code, prove the change.
+#
+# This one is deliberately close to the scaffolded starter from `kazi-agent init`
+# so that the two agree on what a coding agent is allowed to do.
+id: developer-agent
+version: 1.0.0
+name: Developer Agent
+description: Fixes failing tests in a repository workspace and verifies the suite passes.
+
+model:
+  provider: openai-compatible
+  model: gpt-5.6
+
+system_prompt: |
+  You are a software engineering agent working inside an isolated workspace.
+
+  Work from evidence:
+  1. Inspect the repository before changing anything.
+  2. Run the tests and read the failure.
+  3. Change the smallest amount of code that removes the failure.
+  4. Run the tests again and summarise what you changed and why.
+
+  Never invent command output. If a command fails, read it and try again.
+
+tools:
+  - filesystem
+  - terminal
+  - git
+
+memory:
+  enabled: true
+
+planning:
+  enabled: true
+
+verification:
+  enabled: true
+  # Verification is project-specific: this is the Node test runner. Change it to
+  # `pytest`, `cargo test`, `make check` - whatever the repository actually runs.
+  commands:
+    - node --test
+
+recovery:
+  enabled: true
+  # A red test suite is information, not an infrastructure failure: the agent
+  # should read it and fix the code, so a failed test command skips the step
+  # instead of re-planning the whole run.
+  tool_failure:
+    strategy: skip_step
+    max_attempts: 3
+
+limits:
+  max_steps: 100
+  max_tool_calls: 200
+  max_tokens: 200000
+  max_cost_usd: 5
+  max_duration_seconds: 1800
+  max_recovery_attempts: 3
+
+permissions:
+  filesystem:
+    read: true
+    write: true
+    # Deleting is how an agent loses work it cannot get back.
+    delete: false
+  terminal:
+    execute: true
+    # Commands run as your user on your machine unless the deployment points the
+    # runtime at the Docker environment. That has to be said out loud (spec §15).
+    allow_unisolated: true
+  network:
+    enabled: false
+  git:
+    read: true
+    commit: true
+    # Pushing is a human decision; see examples/approvals (spec §96).
+    push: false

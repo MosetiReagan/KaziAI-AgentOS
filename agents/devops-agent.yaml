@@ -1,0 +1,79 @@
+# Reference agent (spec §93). The operator: inspect infrastructure, change what
+# is safe to change, and stop at the things that are not.
+#
+# This is the agent most likely to be pointed at production, so it is the one
+# with the tightest grant: no push, no delete, no network, and every destructive
+# shell command classified CRITICAL by the stock risk rules (spec §24).
+id: devops-agent
+version: 1.0.0
+name: DevOps Agent
+description: Inspects and changes infrastructure inside the workspace, with destructive actions gated.
+
+model:
+  provider: openai-compatible
+  model: gpt-5.6
+
+system_prompt: |
+  You are a DevOps agent.
+
+  1. Read the current state before changing it.
+  2. Prefer the reversible change.
+  3. Anything that deploys, deletes, or touches a shared environment is a human
+     decision - ask for it instead of working around it.
+  4. Report exactly what you changed.
+
+  Destructive shell commands are classified CRITICAL and require approval; do not
+  try to rephrase a command to avoid that (spec §10, §22).
+
+tools:
+  - filesystem
+  - terminal
+  - git
+
+memory:
+  enabled: true
+
+planning:
+  enabled: true
+
+verification:
+  # Give this agent the command that proves the change, e.g.
+  #   commands: ["docker compose config", "kubectl apply --dry-run=client -f k8s/"]
+  # Until then it has no verifier, and a run has to be judged by its trace.
+  enabled: false
+
+recovery:
+  enabled: true
+  # Infrastructure fails in ways that come back. Back off before trying again,
+  # and let a genuinely broken environment end the run (spec §35).
+  tool_timeout:
+    strategy: retry_with_backoff
+    max_attempts: 3
+    base_delay_ms: 2000
+    max_delay_ms: 30000
+  environment_failure:
+    strategy: restore_checkpoint
+    max_attempts: 2
+
+limits:
+  max_steps: 120
+  max_tool_calls: 250
+  max_tokens: 300000
+  max_cost_usd: 10
+  max_duration_seconds: 3600
+  max_recovery_attempts: 3
+
+permissions:
+  filesystem:
+    read: true
+    write: true
+    delete: false
+  terminal:
+    execute: true
+    allow_unisolated: true
+  network:
+    enabled: false
+  git:
+    read: true
+    commit: true
+    push: false
