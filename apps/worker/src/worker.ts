@@ -224,40 +224,57 @@ export class AgentWorker {
   /** Execute one claimed run. Public so a queue that owns its own retries
    * (BullMQ) can drive the same code path instead of a second implementation. */
   async executeItem(item: QueuedRun): Promise<void> {
-    const decision = await this.options.os.runtime.backpressure.check({
-      organizationId: item.organizationId,
-      queueDepth: await this.queue.depth(),
-    });
-    if (!decision.allowed) {
-      this.logger.warn('backpressure: leaving the run queued', {
-        runId: item.runId,
-        reason: decision.reason,
-      });
-      await this.release(item);
-      return;
-    }
-
-    const started = Date.now();
+    let counted = false;
     try {
-      const runtime = this.options.os.runtime;
-      if (item.action === 'resume') await runtime.resume(item.runId);
-      else if (item.action === 'retry') await runtime.retry(item.runId);
-      else await runtime.start(item.runId);
-      this.stats.completed += 1;
-      this.logger.info('run finished', {
-        runId: item.runId,
-        action: item.action,
-        attempt: item.attempt,
-        durationMs: Date.now() - started,
+      const decision = await this.options.os.runtime.backpressure.check({
+        organizationId: item.organizationId,
+        queueDepth: await this.queue.depth(),
       });
+      if (!decision.allowed) {
+        this.logger.warn('backpressure: leaving the run queued', {
+          runId: item.runId,
+          reason: decision.reason,
+        });
+        await this.release(item);
+        return;
+      }
+
+      const started = Date.now();
+      try {
+        const runtime = this.options.os.runtime;
+        if (item.action === 'resume') await runtime.resume(item.runId);
+        else if (item.action === 'retry') await runtime.retry(item.runId);
+        else await runtime.start(item.runId);
+        this.stats.completed += 1;
+        this.logger.info('run finished', {
+          runId: item.runId,
+          action: item.action,
+          attempt: item.attempt,
+          durationMs: Date.now() - started,
+        });
+      } catch (error) {
+        counted = true;
+        this.stats.failed += 1;
+        await this.recordFailure(item, error);
+        this.logger.error('run execution failed', {
+          runId: item.runId,
+          attempt: item.attempt,
+          error: (error as Error).message,
+        });
+      }
     } catch (error) {
-      this.stats.failed += 1;
-      await this.recordFailure(item, error);
-      this.logger.error('run execution failed', {
+      // This is the path where the store itself is unavailable: even writing
+      // the failure record failed. Nothing may escape here. A rejected promise
+      // from `track()` is an unhandled rejection, which takes the whole worker
+      // down and with it every other run it was executing - a single flaky
+      // dependency turning into an outage (spec §84, §104).
+      if (!counted) this.stats.failed += 1;
+      this.logger.error('worker could not record a failed run', {
         runId: item.runId,
         attempt: item.attempt,
         error: (error as Error).message,
       });
+      await this.release(item).catch(() => undefined);
     }
   }
 

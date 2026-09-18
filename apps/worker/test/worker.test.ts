@@ -218,6 +218,51 @@ describe('AgentWorker', () => {
 
     agentos.runtime.start = runtimeStart;
   });
+
+  it('survives a store outage while it is recording a failure', async () => {
+    const agentos = await build();
+    const run = await (await developerAgent(agentos)).createRun({ goal: 'unlucky' });
+
+    // The store rejects even the failure record, which is the worst case: the
+    // worker cannot persist why the run failed.
+    const brokenStore = {
+      ...agentos.store,
+      failures: {
+        save: async () => {
+          throw new Error('store unavailable');
+        },
+        list: agentos.store.failures.list,
+      },
+    } as typeof agentos.store;
+    const brokenOs = {
+      ...agentos,
+      store: brokenStore,
+      runtime: {
+        ...agentos.runtime,
+        start: async () => {
+          throw new Error('store unavailable');
+        },
+      },
+    } as unknown as AgentOS;
+
+    const worker = new AgentWorker({
+      os: brokenOs,
+      queue: new StoreRunQueue({ store: brokenStore, workerId: 'w-outage' }),
+      concurrency: 1,
+      pollIntervalMs: 10,
+    });
+    const item = await worker.queue.claim();
+    expect(item).toBeDefined();
+
+    // A rejected promise here would be an unhandled rejection and take the
+    // whole worker down, along with every other run it was executing.
+    await expect(worker.executeItem(item!)).resolves.toBeUndefined();
+    expect(worker.statsSnapshot().failed).toBe(1);
+
+    // The run goes back on the queue so a healthy worker can pick it up.
+    const queued = await brokenStore.runs.get(run.id);
+    expect(claimOf(queued!)?.workerId).toBe('queue');
+  });
 });
 
 describe('BullMQ adapter', () => {
