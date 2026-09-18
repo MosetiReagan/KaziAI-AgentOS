@@ -74,7 +74,12 @@ function operationOf(args: JsonValue): string | undefined {
 export interface ActionFromToolCallInput {
   run: AgentRun;
   toolCall: ToolCallRequest;
-  tool: Pick<AgentTool, 'id'> & Pick<Partial<AgentTool>, 'sandbox'>;
+  /**
+   * The declared idempotency travels with the action: a tool's own statement
+   * about whether repeating it is safe decides whether recovery may retry or
+   * has to escalate (spec §32).
+   */
+  tool: Pick<AgentTool, 'id'> & Pick<Partial<AgentTool>, 'sandbox' | 'defaultIdempotency'>;
   stepId?: string;
   stepIndex: number;
   attempt: number;

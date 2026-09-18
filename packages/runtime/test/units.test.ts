@@ -72,6 +72,20 @@ describe('idempotency classification', () => {
     expect(otherStep).not.toBe(idempotencyKeyFor(base.runId, base.stepIndex, base.toolId, base.args, base.attempt));
   });
 
+  it("carries a tool's declared idempotency onto the action it produces", () => {
+    const run = { id: 'run_1', goal: 'g', agentId: 'a' } as unknown as AgentRun;
+    const action = actionFromToolCall({
+      run,
+      toolCall: { id: 'call_1', name: 'custom.notify', arguments: { to: 'ops' } },
+      tool: { id: 'custom.notify', defaultIdempotency: 'non-idempotent' },
+      stepIndex: 0,
+      attempt: 0,
+    });
+    // The declared class is what the executor's replay guard and the recovery
+    // engine read, so it must survive the trip from the tool definition.
+    expect(action.idempotency).toBe('non-idempotent');
+  });
+
   it('builds an action whose hash covers the tool and its arguments only', () => {
     const run = { id: 'run_1', goal: 'g', agentId: 'a' } as unknown as AgentRun;
     const action = actionFromToolCall({

@@ -126,7 +126,11 @@ export class ModelStep {
       return actionFromToolCall({
         run: input.run,
         toolCall,
-        tool: { id: tool.id, ...(tool.sandbox ? { sandbox: tool.sandbox } : {}) },
+        tool: {
+          id: tool.id,
+          ...(tool.defaultIdempotency ? { defaultIdempotency: tool.defaultIdempotency } : {}),
+          ...(tool.sandbox ? { sandbox: tool.sandbox } : {}),
+        },
         ...(input.stepId ? { stepId: input.stepId } : {}),
         stepIndex: input.stepIndex,
         attempt: input.attempt,
