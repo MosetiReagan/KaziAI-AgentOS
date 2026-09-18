@@ -94,6 +94,20 @@ export const forkRunSchema = z.object({
   labels: z.record(z.string(), z.string()).optional(),
 });
 
+export const memoryTypeSchema = z.enum(['working', 'episodic', 'semantic', 'task']);
+
+export const searchMemorySchema = z.object({
+  runId: z.string().min(1).optional(),
+  agentId: z.string().min(1).optional(),
+  type: memoryTypeSchema.optional(),
+  text: z.string().min(1).max(500).optional(),
+  tags: z.string().optional().describe('Comma-separated tags; an entry must carry all of them'),
+  minImportance: z.coerce.number().min(0).max(1).optional(),
+  includeExpired: z.coerce.boolean().optional(),
+  orderBy: z.enum(['recent', 'importance', 'relevance']).optional(),
+  limit: z.coerce.number().int().min(1).max(500).optional(),
+});
+
 export const replayRunSchema = z.object({
   mode: z.enum(['trace', 'deterministic', 'simulate']).optional(),
 });

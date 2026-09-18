@@ -12,6 +12,7 @@ import { registerApprovalRoutes } from './routes/approvals.js';
 import { registerCatalogRoutes } from './routes/catalog.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { registerIdentityRoutes } from './routes/identity.js';
+import { registerMemoryRoutes } from './routes/memory.js';
 import { registerRunRoutes } from './routes/runs.js';
 import { registerWebhookRoutes } from './routes/webhooks.js';
 import { registerStreamRoutes } from './routes/stream.js';
@@ -92,6 +93,7 @@ export async function buildApi(options: ApiOptions = {}): Promise<ApiHandle> {
   registerApprovalRoutes(app);
   registerCatalogRoutes(app);
   registerIdentityRoutes(app);
+  registerMemoryRoutes(app);
   registerStreamRoutes(app);
   registerWebhookRoutes(app);
   registerDocsRoutes(app);
