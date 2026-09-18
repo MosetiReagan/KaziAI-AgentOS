@@ -1,0 +1,76 @@
+{
+  "note": [
+    "A recorded decision script for the deterministic provider (spec \u00a787).",
+    "",
+    "Turn 5 is deliberately the same push as turn 4. When the runtime parks the",
+    "run in WAITING it has not executed anything: on resume the agent is asked",
+    "for its next action, re-issues the push, and the executor finds the approval",
+    "a human already made - matched by the action's fingerprint, not by its id",
+    "(spec \u00a723, \u00a732). Two modes, one script: `finish` has the closing turn for",
+    "each decision, and both are consumed at the same position.",
+    "The first turn is a planner answer only when planning is enabled; this agent",
+    "turns planning off, so every turn here is a decision."
+  ],
+  "turns": [
+    {
+      "text": "First, the state of the repository.",
+      "toolCalls": [
+        { "name": "git", "arguments": { "operation": "status" } }
+      ]
+    },
+    {
+      "text": "The release note is missing an entry. Adding one.",
+      "toolCalls": [
+        {
+          "name": "filesystem.edit",
+          "arguments": {
+            "path": "NOTES.md",
+            "old_text": "## Unreleased\n\nNothing yet.",
+            "new_text": "## Unreleased\n\n- Release flow now stops for human approval before it pushes."
+          }
+        }
+      ]
+    },
+    {
+      "text": "Staging the note.",
+      "toolCalls": [
+        { "name": "git", "arguments": { "operation": "add", "path": "." } }
+      ]
+    },
+    {
+      "text": "Committing it locally. This part is reversible and does not need anyone.",
+      "toolCalls": [
+        {
+          "name": "git",
+          "arguments": { "operation": "commit", "message": "release: note the approval-gated flow" }
+        }
+      ]
+    },
+    {
+      "text": "Now the irreversible part: pushing to origin.",
+      "toolCalls": [
+        {
+          "name": "git",
+          "arguments": { "operation": "push", "remote": "origin", "branch": "main" }
+        }
+      ]
+    },
+    {
+      "text": "Re-issuing the push now that a human has decided.",
+      "toolCalls": [
+        {
+          "name": "git",
+          "arguments": { "operation": "push", "remote": "origin", "branch": "main" }
+        }
+      ]
+    }
+  ],
+  "finish": {
+    "approve": {
+      "text": "The release commit is on origin/main. Nothing left to do."
+    },
+    "deny": {
+      "text": "The push was denied, so the commit stays local and I am stopping here."
+    }
+  }
+}

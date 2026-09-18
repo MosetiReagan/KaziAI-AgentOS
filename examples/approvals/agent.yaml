@@ -1,0 +1,64 @@
+# A reference agent whose last step cannot happen without a human (spec §96).
+#
+# The interesting part is the pair of lines at the bottom: the run is *granted*
+# `git.push`, so the tool itself is willing, and the push still does not happen.
+# Authorization is not a property of the tool or of the plan - it is a decision
+# the policy engine makes about this specific action, in front of this specific
+# run, and the runtime parks the run until a person answers (spec §10, §22-§23).
+id: release-agent
+version: 1.0.0
+name: Release Agent
+description: Prepares a release commit and pushes it, but only once a human approves the push.
+
+model:
+  provider: openai-compatible
+  model: gpt-5.6
+
+system_prompt: |
+  You are a release agent working inside an isolated workspace.
+
+  1. Look at the repository state before changing anything.
+  2. Record the release note.
+  3. Commit it locally.
+  4. Push to origin.
+
+  A push that policy sends to a human is not a failure: wait for the decision and
+  continue from it.
+
+tools:
+  - filesystem
+  - git
+
+planning:
+  enabled: false
+
+verification:
+  # The evidence for this example is the remote itself, which the driver reads
+  # back after the run; a verification command inside the workspace could not
+  # tell a landed push from an empty remote (spec §39).
+  enabled: false
+
+recovery:
+  enabled: true
+
+limits:
+  max_steps: 25
+  max_tool_calls: 40
+  max_tokens: 50000
+  max_cost_usd: 1
+  max_duration_seconds: 300
+
+permissions:
+  filesystem:
+    read: true
+    write: true
+    delete: false
+  network:
+    enabled: false
+  git:
+    read: true
+    commit: true
+    # Granted, and still gated. `require-approval.git.push` in the policy engine
+    # turns every push into an approval request; this line only says the tool
+    # would otherwise be permitted to do it (spec §21, §54).
+    push: true
