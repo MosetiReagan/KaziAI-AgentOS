@@ -410,6 +410,52 @@ describe('Executor', () => {
     expect(harness.calls).toHaveLength(1);
   });
 
+  it('re-runs an idempotent action that failed, so recovery can actually retry it', async () => {
+    let attempts = 0;
+    const flaky = echoTool('test.flaky', {
+      risk: 'LOW' as const,
+      async execute(input) {
+        attempts += 1;
+        if (attempts === 1) throw new Error('transient failure');
+        return { success: true, output: input as JsonValue, idempotency: 'idempotent' as const };
+      },
+    });
+    const harness = await createHarness({ tools: [flaky] });
+    const action = makeAction({ runId: harness.runId, toolId: 'test.flaky', arguments: { value: 'retry me' } });
+
+    const first = await harness.executor.execute(harness.request([action]));
+    expect(first.outcomes[0]?.status).toBe('failed');
+
+    // The recovery engine retries the same action with the same idempotency
+    // key. A failed commit is not evidence that the side effect landed, and
+    // the action declared itself repeatable, so the tool must run again.
+    const retried = await harness.executor.executeSingle({ ...action, attempt: 1 }, harness.request([]));
+    expect(retried.status).toBe('succeeded');
+    expect(attempts).toBe(2);
+  });
+
+  it('reports a failed non-idempotent action back instead of repeating it', async () => {
+    let attempts = 0;
+    const unsafe = echoTool('test.unsafe', {
+      risk: 'LOW' as const,
+      async execute(_input, _context) {
+        attempts += 1;
+        throw new Error('unsafe failure');
+      },
+    });
+    const harness = await createHarness({ tools: [unsafe] });
+    const action = { ...makeAction({ runId: harness.runId, toolId: 'test.unsafe' }), idempotency: 'non-idempotent' as const };
+
+    await harness.executor.execute(harness.request([action]));
+    expect(attempts).toBe(1);
+
+    const replayed = await harness.executor.executeSingle({ ...action, attempt: 1 }, harness.request([]));
+    // Repeating it might apply the side effect twice, so the runtime refuses.
+    expect(replayed.replayed).toBe(true);
+    expect(replayed.status).toBe('failed');
+    expect(attempts).toBe(1);
+  });
+
   it('records intent before executing so a crash leaves evidence', async () => {
     const crashy = echoTool('test.crash', {
       risk: 'LOW' as const,

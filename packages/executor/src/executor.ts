@@ -211,7 +211,15 @@ export class Executor {
     // Already-committed actions are never re-run: the journal is the source of
     // truth for "did this side effect happen".
     const existing = await this.options.journal.findByKey(request.runId, action.idempotencyKey);
-    if (existing && (existing.status === 'succeeded' || existing.status === 'failed')) {
+    // A *failed* commit is not proof that a side effect landed, so the replay
+    // guard depends on what the action declared. An `idempotent` or
+    // `retry-safe` action may be attempted again — otherwise the recovery
+    // engine's `retry` strategy would replay the same failure forever instead
+    // of retrying anything. Anything else (including `unknown`) is reported
+    // back unchanged, because repeating it might double-apply (spec §32).
+    const retryableFailure =
+      existing?.status === 'failed' && replayWouldBeSafe(existing.idempotency ?? action.idempotency);
+    if (existing && (existing.status === 'succeeded' || (existing.status === 'failed' && !retryableFailure))) {
       const succeeded = existing.status === 'succeeded';
       return {
         ...base,
@@ -458,6 +466,11 @@ export class Executor {
       finishedAt: Date.now(),
     });
   }
+}
+
+/** Whether repeating an action that already failed cannot double-apply. */
+function replayWouldBeSafe(idempotency: AgentAction['idempotency'] | undefined): boolean {
+  return idempotency === 'idempotent' || idempotency === 'retry-safe';
 }
 
 function fullRequest(request: ExecutionRequest, action: AgentAction): ExecutionRequest {
