@@ -5,12 +5,14 @@ import {
   NullLogger,
   type AgentRunResult,
   type AgentTool,
+  type ModelProvider,
   type RunLimits,
   type ToolPermissions,
 } from '@kazi-ai/agentos-core';
 import { createAgentOS, type AgentOS } from '@kazi-ai/agentos';
 import { FakeModelProvider, type FakeProviderOptions, type FakeTurn } from '@kazi-ai/agentos-providers';
 import type { AgentOptions } from '@kazi-ai/agentos';
+import type { Chaos } from './chaos.js';
 
 export interface TestAgentOSOptions {
   turns: FakeTurn[];
@@ -20,12 +22,20 @@ export interface TestAgentOSOptions {
   limits?: RunLimits;
   /** Extra tools registered alongside the built-ins. */
   extraTools?: AgentTool[];
+  /** Providers registered alongside the scripted fake, e.g. a failover target. */
+  extraProviders?: ModelProvider[];
   /** Anything else `createAgentOS` accepts, e.g. `mcp`, `approvals`, `policyRules`. */
   overrides?: Partial<Parameters<typeof createAgentOS>[0]>;
   agent?: Partial<AgentOptions>;
   /** Planning consumes model turns; tests that script turns usually want it off. */
   planning?: boolean;
   verification?: boolean;
+  /**
+   * Route the provider and every extra tool through a chaos injector
+   * (spec §88). The store is wrapped by the test itself, because it is built
+   * before this helper runs.
+   */
+  chaos?: Chaos;
 }
 
 export interface TestAgentRun {
@@ -59,6 +69,8 @@ export async function createTestAgentOS(options: TestAgentOSOptions): Promise<Te
     turns: options.turns,
     ...(options.onExhausted === undefined ? {} : { onExhausted: options.onExhausted }),
   });
+  const chaos = options.chaos;
+  const registeredTools = (options.extraTools ?? []).map((tool) => (chaos ? chaos.tool(tool) : tool));
 
   const os = await createAgentOS({
     dataDir,
@@ -66,9 +78,9 @@ export async function createTestAgentOS(options: TestAgentOSOptions): Promise<Te
     organizationId: 'org_test',
     projectId: 'prj_test',
     providersFromEnv: false,
-    providers: [provider],
+    providers: [chaos ? chaos.provider(provider) : provider, ...(options.extraProviders ?? [])],
     logger: new NullLogger(),
-    tools: options.extraTools ?? [],
+    tools: registeredTools,
     environment: {
       kind: 'local',
       workspaceRoot: join(dataDir, 'workspaces'),
