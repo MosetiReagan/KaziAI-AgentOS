@@ -49,8 +49,13 @@ export interface ChaosFaultSpec {
    * from the first call.
    */
   skip?: number;
-  /** Which store surface a `store_failure` hits. Default `events`. */
+  /** Which store surface a `store_failure` hits. */
   surface?: StoreSurface;
+  /**
+   * Which method on that surface fails, e.g. `save` or `create`. Omit to break
+   * every method on the surface, including reads.
+   */
+  method?: string;
 }
 
 export type StoreSurface =
@@ -290,6 +295,7 @@ export class Chaos {
       if ((this.remaining.get(fault) ?? 0) <= 0) return false;
       if (fault.toolId !== undefined && fault.toolId !== target) return false;
       if (fault.surface !== undefined && !(filter.surfaces ?? []).includes(fault.surface)) return false;
+      if (fault.method !== undefined && fault.method !== filter.method) return false;
       const skip = this.skipped.get(fault) ?? 0;
       if (skip > 0) {
         this.skipped.set(fault, skip - 1);
@@ -319,8 +325,9 @@ export class Chaos {
  * A durable run is consistent regardless of which faults fired:
  *
  * - it reached a resting state, not a half-written one
- * - its journal never committed the same idempotency key twice
- * - every intent is either committed or visibly pending (never silently lost)
+ * - no side effect was applied twice: at most one *successful* commit per
+ *   idempotency key (a failed attempt followed by a successful retry is the
+ *   intended history, not a violation — spec §32, §37)
  * - event sequences are strictly increasing (the trace can be replayed)
  * - the limits it declared were never exceeded
  */
@@ -329,6 +336,7 @@ export interface ConsistencyReport {
   terminal: boolean;
   journalEntries: number;
   pendingActions: number;
+  /** Idempotency keys with more than one successful commit. */
   duplicateCommits: string[];
   eventSequencesMonotonic: boolean;
   budgetRespected: boolean;
@@ -344,12 +352,12 @@ export interface ConsistencyInput {
 }
 
 export function consistencyReport(input: ConsistencyInput): ConsistencyReport {
-  const committed = new Set<string>();
+  const succeeded = new Set<string>();
   const duplicates: string[] = [];
   for (const entry of input.journal) {
-    if (entry.status === 'executing' || entry.status === 'pending') continue;
-    if (committed.has(entry.idempotencyKey)) duplicates.push(entry.idempotencyKey);
-    committed.add(entry.idempotencyKey);
+    if (entry.status !== 'succeeded') continue;
+    if (succeeded.has(entry.idempotencyKey)) duplicates.push(entry.idempotencyKey);
+    succeeded.add(entry.idempotencyKey);
   }
 
   let monotonic = true;
