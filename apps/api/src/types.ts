@@ -84,6 +84,8 @@ export interface ApiContext {
   readonly bootstrap?: { created: boolean; key?: string };
   /** Signed delivery of run events to subscribed endpoints (spec §98). */
   readonly webhooks?: WebhookDispatcher;
+  /** Every route the app actually serves, so the OpenAPI document can be checked. */
+  readonly routes: Set<string>;
   now(): number;
   /** Resolve the caller. Never trusts a header it has not verified. */
   principal(request: FastifyRequest): Promise<Principal>;

@@ -12,6 +12,7 @@ export * from './catalog.js';
 export * from './dispatcher.js';
 export * from './errors.js';
 export * from './http.js';
+export * from './openapi.js';
 export { registerStreamRoutes } from './routes/stream.js';
 export { registerWebhookRoutes } from './routes/webhooks.js';
 export * from './schemas.js';

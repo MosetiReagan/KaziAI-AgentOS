@@ -15,6 +15,7 @@ import { registerIdentityRoutes } from './routes/identity.js';
 import { registerRunRoutes } from './routes/runs.js';
 import { registerWebhookRoutes } from './routes/webhooks.js';
 import { registerStreamRoutes } from './routes/stream.js';
+import { registerDocsRoutes } from './openapi.js';
 import type { ApiContext, ApiOptions } from './types.js';
 
 export interface ApiHandle {
@@ -37,6 +38,20 @@ export async function buildApi(options: ApiOptions = {}): Promise<ApiHandle> {
     bodyLimit: 1_048_576,
   });
   app.decorate('api', context);
+
+  // Record what is actually served, before any route is added, so a route that
+  // is never documented can be detected instead of discovered by a user.
+  app.addHook('onRoute', (route) => {
+    const methods = Array.isArray(route.method) ? route.method : [route.method];
+    for (const method of methods) {
+      // Fastify answers HEAD wherever it answers GET; that is not a separate
+      // contract and does not belong in the document.
+      if (method.toLowerCase() === 'head') continue;
+      if (DOCUMENTED_PREFIXES.some((prefix) => route.url.startsWith(prefix))) {
+        context.routes.add(`${method.toLowerCase()} ${route.url}`);
+      }
+    }
+  });
 
   const origins = options.cors?.origins ?? [];
   await app.register(cors, {
@@ -79,6 +94,7 @@ export async function buildApi(options: ApiOptions = {}): Promise<ApiHandle> {
   registerIdentityRoutes(app);
   registerStreamRoutes(app);
   registerWebhookRoutes(app);
+  registerDocsRoutes(app);
 
   return {
     app,
@@ -86,6 +102,8 @@ export async function buildApi(options: ApiOptions = {}): Promise<ApiHandle> {
     close: () => app.close(),
   };
 }
+
+const DOCUMENTED_PREFIXES = ['/api/', '/health', '/ready', '/version', '/docs', '/openapi.json'];
 
 export async function createApiContext(options: ApiOptions = {}): Promise<ApiContext> {
   const readEnv = (name: string): string | undefined => options.env?.[name] ?? process.env[name];
@@ -166,8 +184,11 @@ export async function createApiContext(options: ApiOptions = {}): Promise<ApiCon
     : undefined;
   webhooks?.start();
 
+  const routes = new Set<string>();
+
   const context: ApiContext = {
     os,
+    routes,
     store: os.store as AgentOSStore,
     catalog,
     dispatcher,
