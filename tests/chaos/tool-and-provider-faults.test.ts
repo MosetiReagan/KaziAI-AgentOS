@@ -82,6 +82,25 @@ describe('a tool that misbehaves', () => {
   });
 });
 
+describe('a tool that returns something that is not JSON', () => {
+  it('normalises the output instead of corrupting the journal', async () => {
+    const chaos = new Chaos({ seed: 16, faults: [{ kind: 'invalid_tool_output', toolId: 'chaos.ping', times: 1 }] });
+    const { harness, os } = await build({ chaos, turns: PING_THEN_FINISH });
+    const finished = await harness.run('ping something unprintable');
+
+    expect(chaos.firedOf('invalid_tool_output')).toHaveLength(1);
+    expect(finished.status).toBe('COMPLETED');
+
+    const journal = await os.store.actions.list(finished.id);
+    const committed = journal.find((entry) => entry.status === 'succeeded');
+    // A BigInt reached the tool's return value; it is normalized to a string the
+    // way `defineTool` does, so the append-only journal stays serializable and
+    // every reader can still parse it (spec §33, §105).
+    expect(committed?.result).toEqual({ total: '7' });
+    expect(() => JSON.stringify(journal)).not.toThrow();
+  });
+});
+
 describe('a provider that misbehaves', () => {
   it('fails over to the fallback provider and records the model switch', async () => {
     const chaos = new Chaos({ seed: 14, faults: [{ kind: 'provider_timeout', times: 1 }] });

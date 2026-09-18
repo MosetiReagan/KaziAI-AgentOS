@@ -43,6 +43,12 @@ export interface ChaosFaultSpec {
   toolId?: string;
   /** How many calls it affects before the dependency recovers. Default 1. */
   times?: number;
+  /**
+   * How many matching calls are let through before the fault starts. Models a
+   * dependency that was healthy and then died, rather than one that is broken
+   * from the first call.
+   */
+  skip?: number;
   /** Which store surface a `store_failure` hits. Default `events`. */
   surface?: StoreSurface;
 }
@@ -109,12 +115,16 @@ export class Chaos {
   private readonly rate: number;
   private readonly now: () => number;
   private readonly remaining = new Map<ChaosFaultSpec, number>();
+  private readonly skipped = new Map<ChaosFaultSpec, number>();
 
   constructor(private readonly options: ChaosOptions = {}) {
     this.rng = seeded(options.seed ?? 1);
     this.rate = options.rate ?? 1;
     this.now = options.now ?? (() => Date.now());
-    for (const fault of options.faults ?? []) this.remaining.set(fault, fault.times ?? 1);
+    for (const fault of options.faults ?? []) {
+      this.remaining.set(fault, fault.times ?? 1);
+      this.skipped.set(fault, fault.skip ?? 0);
+    }
   }
 
   /** Faults that actually fired, in order. */
@@ -280,6 +290,11 @@ export class Chaos {
       if ((this.remaining.get(fault) ?? 0) <= 0) return false;
       if (fault.toolId !== undefined && fault.toolId !== target) return false;
       if (fault.surface !== undefined && !(filter.surfaces ?? []).includes(fault.surface)) return false;
+      const skip = this.skipped.get(fault) ?? 0;
+      if (skip > 0) {
+        this.skipped.set(fault, skip - 1);
+        return false;
+      }
       return true;
     });
     if (candidates.length === 0) return undefined;
