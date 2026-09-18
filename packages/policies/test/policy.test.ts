@@ -10,6 +10,7 @@ import {
   actionHash,
   mostRestrictive,
   policyRule,
+  policyRuleSpec,
 } from '../src/index.js';
 
 function action(toolId: string, args: Record<string, unknown> = {}): AgentAction {
@@ -339,3 +340,34 @@ describe('approval manager', () => {
   });
 });
 
+describe('policy rule introspection', () => {
+  it('keeps the declarative spec of a rule so it can be shown or exported', () => {
+    const rule = policyRule({
+      id: 'require-approval.git.push',
+      description: 'Pushing requires approval',
+      tools: ['git'],
+      outcome: 'REQUIRE_APPROVAL',
+      risk: 'CRITICAL',
+      priority: 90,
+    });
+    expect(policyRuleSpec(rule)).toEqual({
+      id: 'require-approval.git.push',
+      description: 'Pushing requires approval',
+      tools: ['git'],
+      outcome: 'REQUIRE_APPROVAL',
+      risk: 'CRITICAL',
+      priority: 90,
+    });
+    expect(
+      policyRuleSpec({ id: 'x', description: 'x', evaluate: () => undefined }),
+    ).toBeUndefined();
+  });
+
+  it('survives registration, ordering and copying inside the engine', () => {
+    const engine = new DefaultPolicyEngine();
+    for (const rule of DEFAULT_RULES) engine.register(rule);
+    const listed = engine.list();
+    expect(listed).toHaveLength(DEFAULT_RULES.length);
+    for (const rule of listed) expect(policyRuleSpec(rule)?.id).toBe(rule.id);
+  });
+});

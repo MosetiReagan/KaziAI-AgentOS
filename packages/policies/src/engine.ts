@@ -131,9 +131,26 @@ export interface RuleBuilderOptions {
   when?: (action: AgentAction, context: PolicyContext) => boolean;
 }
 
-/** Declarative rule factory, used to build policy from configuration. */
+/** The declarative half of a rule: everything except the predicate. */
+export interface PolicyRuleSpec {
+  id: string;
+  description: string;
+  tools: string[];
+  outcome: PolicyDecision['outcome'];
+  priority?: number;
+  risk?: RiskLevel;
+  reason?: string;
+}
+
+/**
+ * Declarative rule factory, used to build policy from configuration.
+ *
+ * The spec is attached to the rule so the API, the CLI and dashboards can show
+ * an operator *why* a rule exists, and a policy can be exported back to YAML
+ * (spec §62). The predicate itself is not serialisable.
+ */
 export function policyRule(options: RuleBuilderOptions): PolicyRule {
-  return {
+  const rule: PolicyRule = {
     id: options.id,
     description: options.description,
     ...(options.priority === undefined ? {} : { priority: options.priority }),
@@ -149,6 +166,22 @@ export function policyRule(options: RuleBuilderOptions): PolicyRule {
       };
     },
   };
+  const spec: PolicyRuleSpec = {
+    id: options.id,
+    description: options.description,
+    tools: [...options.tools],
+    outcome: options.outcome,
+    ...(options.priority === undefined ? {} : { priority: options.priority }),
+    ...(options.risk === undefined ? {} : { risk: options.risk }),
+    ...(options.reason === undefined ? {} : { reason: options.reason }),
+  };
+  Object.defineProperty(rule, 'spec', { value: Object.freeze(spec), enumerable: true });
+  return rule;
+}
+
+/** The declarative spec a rule was built from, when it has one. */
+export function policyRuleSpec(rule: PolicyRule): PolicyRuleSpec | undefined {
+  return (rule as PolicyRule & { spec?: PolicyRuleSpec }).spec;
 }
 
 export const DEFAULT_RULES: PolicyRule[] = [
