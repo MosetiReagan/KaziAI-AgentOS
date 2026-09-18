@@ -358,3 +358,25 @@ describe('default policy', () => {
     expect(harness.runtime.policies.list()).toHaveLength(0);
   });
 });
+
+describe('event bus', () => {
+  it('publishes every event to subscribers as well as persisting it', async () => {
+    harness = await createHarness({
+      turns: [{ text: 'all done' }],
+      onExhausted: { text: 'done' },
+    });
+    const seen: string[] = [];
+    const unsubscribe = harness.runtime.bus.subscribe(
+      (event) => {
+        seen.push(event.type);
+      },
+      {},
+    );
+    await harness.runtime.createRun(harness.runInput({ goal: 'publish events' }));
+    const run = (await harness.store.runs.list({})).items[0];
+    unsubscribe();
+    // A run that was created but never started still emits run.created.
+    expect(seen).toContain('run.created');
+    expect(run?.status).toBe('CREATED');
+  });
+});

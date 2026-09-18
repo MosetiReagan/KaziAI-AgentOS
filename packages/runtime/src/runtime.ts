@@ -141,6 +141,12 @@ export class AgentOSRuntime implements AgentRuntime {
   readonly logger: Logger;
   readonly spans: SpanFactory;
   readonly recorder: SpanRecorder;
+  /**
+   * The runtime's event bus. Every event is persisted *and* published here, so
+   * a dashboard, a webhook dispatcher or another service in the same process
+   * can follow a run without polling (spec §48).
+   */
+  readonly bus: EventBus;
 
   private readonly events: EventWriter;
   private readonly loop: AgentLoop;
@@ -286,9 +292,10 @@ export class AgentOSRuntime implements AgentRuntime {
         },
       },
     });
+    this.bus = options.bus ?? new InMemoryEventBus();
     this.events = new EventWriter({
       store: this.store,
-      bus: options.bus ?? new InMemoryEventBus(),
+      bus: this.bus,
       logger: this.logger,
     });
 
