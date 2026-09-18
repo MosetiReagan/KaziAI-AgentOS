@@ -7,16 +7,20 @@ import {
   type AgentEvent,
   type AgentRun,
   type AgentStateStore,
+  type ApiKey,
   type Approval,
   type ApprovalStore,
   type Checkpoint,
   type CheckpointStore,
   type JournalEntry,
   type MemoryStore,
+  type Organization,
+  type Project,
   type RunUsage,
   type SerializedAgentState,
+  type User,
 } from '@kazi-ai/agentos-core';
-import type { AgentOSStore, RunStore } from '../store.js';
+import type { AgentOSStore, IdentityStore, RunStore } from '../store.js';
 import type {
   AgentDefinitionRecord,
   ArtifactRecord,
@@ -68,6 +72,10 @@ export class EmbeddedStore implements AgentOSStore {
   private readonly policyDecisionLog: JsonlAppendLog<PolicyDecisionRecord>;
   private readonly agentDefinitionLog: JsonlLog<AgentDefinitionRecord>;
   private readonly policyDefinitionLog: JsonlLog<PolicyDefinitionRecord>;
+  private readonly organizationLog: JsonlLog<Organization>;
+  private readonly projectLog: JsonlLog<Project>;
+  private readonly userLog: JsonlLog<User>;
+  private readonly apiKeyLog: JsonlLog<ApiKey>;
   private readonly memoryStore: EmbeddedMemoryStore;
   private readonly sequences = new Map<string, number>();
   private readonly journalSequences = new Map<string, number>();
@@ -98,6 +106,10 @@ export class EmbeddedStore implements AgentOSStore {
     this.policyDecisionLog = new JsonlAppendLog<PolicyDecisionRecord>(opts('policy-decisions'));
     this.agentDefinitionLog = new JsonlLog<AgentDefinitionRecord>(opts('agent-definitions'));
     this.policyDefinitionLog = new JsonlLog<PolicyDefinitionRecord>(opts('policy-definitions'));
+    this.organizationLog = new JsonlLog<Organization>(opts('organizations'));
+    this.projectLog = new JsonlLog<Project>(opts('projects'));
+    this.userLog = new JsonlLog<User>(opts('users'));
+    this.apiKeyLog = new JsonlLog<ApiKey>(opts('api-keys'));
     this.memoryStore = new EmbeddedMemoryStore({ ...(this.dir ? { dir: this.dir } : {}), now: options.now });
   }
 
@@ -290,6 +302,52 @@ export class EmbeddedStore implements AgentOSStore {
       this.checkpointLog.filter((checkpoint) => checkpoint.runId === runId).sort((a, b) => a.sequence - b.sequence),
     delete: async (checkpointId: string): Promise<void> => {
       this.checkpointLog.delete(checkpointId);
+    },
+  };
+
+  readonly identity: IdentityStore = {
+    organizations: {
+      save: async (organization: Organization): Promise<void> => {
+        this.organizationLog.put(organization);
+      },
+      get: async (id: string): Promise<Organization | undefined> => this.organizationLog.get(id),
+      getBySlug: async (slug: string): Promise<Organization | undefined> =>
+        this.organizationLog.all().find((organization) => organization.slug === slug),
+      list: async (): Promise<Organization[]> => this.organizationLog.all(),
+    },
+    projects: {
+      save: async (project: Project): Promise<void> => {
+        this.projectLog.put(project);
+      },
+      get: async (id: string): Promise<Project | undefined> => this.projectLog.get(id),
+      getBySlug: async (organizationId: string, slug: string): Promise<Project | undefined> =>
+        this.projectLog
+          .all()
+          .find((project) => project.organizationId === organizationId && project.slug === slug),
+      list: async (organizationId: string): Promise<Project[]> =>
+        this.projectLog.all().filter((project) => project.organizationId === organizationId),
+    },
+    users: {
+      save: async (user: User): Promise<void> => {
+        this.userLog.put(user);
+      },
+      get: async (id: string): Promise<User | undefined> => this.userLog.get(id),
+      getByEmail: async (organizationId: string, email: string): Promise<User | undefined> =>
+        this.userLog
+          .all()
+          .find((user) => user.organizationId === organizationId && user.email.toLowerCase() === email.toLowerCase()),
+      list: async (organizationId: string): Promise<User[]> =>
+        this.userLog.all().filter((user) => user.organizationId === organizationId),
+    },
+    apiKeys: {
+      save: async (apiKey: ApiKey): Promise<void> => {
+        this.apiKeyLog.put(apiKey);
+      },
+      get: async (id: string): Promise<ApiKey | undefined> => this.apiKeyLog.get(id),
+      getByPrefix: async (prefix: string): Promise<ApiKey | undefined> =>
+        this.apiKeyLog.all().find((apiKey) => apiKey.prefix === prefix),
+      list: async (organizationId: string): Promise<ApiKey[]> =>
+        this.apiKeyLog.all().filter((apiKey) => apiKey.organizationId === organizationId),
     },
   };
 

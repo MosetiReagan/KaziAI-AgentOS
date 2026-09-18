@@ -3,6 +3,7 @@ import {
   ConcurrencyError,
   NotFoundError,
   type ActionJournal,
+  type ApiKey,
   type AgentEvent,
   type AgentRun,
   type AgentStateStore,
@@ -15,10 +16,13 @@ import {
   type MemoryQuery,
   type MemoryScope,
   type MemoryStore,
+  type Organization,
+  type Project,
   type RunUsage,
   type SerializedAgentState,
+  type User,
 } from '@kazi-ai/agentos-core';
-import type { AgentOSStore, RunStore } from '../store.js';
+import type { AgentOSStore, IdentityStore, RunStore } from '../store.js';
 import type {
   AgentDefinitionRecord,
   ArtifactRecord,
@@ -644,6 +648,122 @@ export class PrismaStore implements AgentOSStore {
     },
   };
 
+  readonly identity: IdentityStore = {
+    organizations: {
+      save: async (organization: Organization): Promise<void> => {
+        const data = {
+          name: organization.name,
+          slug: organization.slug,
+          settings: json(organization.settings),
+          createdAt: new Date(organization.createdAt),
+        };
+        await this.prisma.organization.upsert({
+          where: { id: organization.id },
+          create: { id: organization.id, ...data },
+          update: data,
+        });
+      },
+      get: async (id: string): Promise<Organization | undefined> => {
+        const row = await this.prisma.organization.findUnique({ where: { id } });
+        return row ? rowToOrganization(row) : undefined;
+      },
+      getBySlug: async (slug: string): Promise<Organization | undefined> => {
+        const row = await this.prisma.organization.findUnique({ where: { slug } });
+        return row ? rowToOrganization(row) : undefined;
+      },
+      list: async (): Promise<Organization[]> =>
+        (await this.prisma.organization.findMany()).map(rowToOrganization),
+    },
+    projects: {
+      save: async (project: Project): Promise<void> => {
+        const data = {
+          organizationId: project.organizationId,
+          name: project.name,
+          slug: project.slug,
+          settings: json(project.settings),
+          createdAt: new Date(project.createdAt),
+        };
+        await this.prisma.project.upsert({
+          where: { id: project.id },
+          create: { id: project.id, ...data },
+          update: data,
+        });
+      },
+      get: async (id: string): Promise<Project | undefined> => {
+        const row = await this.prisma.project.findUnique({ where: { id } });
+        return row ? rowToProject(row) : undefined;
+      },
+      getBySlug: async (organizationId: string, slug: string): Promise<Project | undefined> => {
+        const row = await this.prisma.project.findUnique({
+          where: { organizationId_slug: { organizationId, slug } },
+        });
+        return row ? rowToProject(row) : undefined;
+      },
+      list: async (organizationId: string): Promise<Project[]> =>
+        (await this.prisma.project.findMany({ where: { organizationId } })).map(rowToProject),
+    },
+    users: {
+      save: async (user: User): Promise<void> => {
+        const data = {
+          organizationId: user.organizationId,
+          email: user.email,
+          name: json(user.name),
+          role: user.role,
+          disabled: user.disabled === true,
+          createdAt: new Date(user.createdAt),
+        };
+        await this.prisma.user.upsert({
+          where: { id: user.id },
+          create: { id: user.id, ...data },
+          update: data,
+        });
+      },
+      get: async (id: string): Promise<User | undefined> => {
+        const row = await this.prisma.user.findUnique({ where: { id } });
+        return row ? rowToUser(row) : undefined;
+      },
+      getByEmail: async (organizationId: string, email: string): Promise<User | undefined> => {
+        const row = await this.prisma.user.findUnique({
+          where: { organizationId_email: { organizationId, email } },
+        });
+        return row ? rowToUser(row) : undefined;
+      },
+      list: async (organizationId: string): Promise<User[]> =>
+        (await this.prisma.user.findMany({ where: { organizationId } })).map(rowToUser),
+    },
+    apiKeys: {
+      save: async (apiKey: ApiKey): Promise<void> => {
+        const data = {
+          organizationId: apiKey.organizationId,
+          projectId: json(apiKey.projectId),
+          name: apiKey.name,
+          hash: apiKey.hash,
+          prefix: apiKey.prefix,
+          role: apiKey.role,
+          createdAt: new Date(apiKey.createdAt),
+          lastUsedAt: date(apiKey.lastUsedAt),
+          expiresAt: date(apiKey.expiresAt),
+          revokedAt: date(apiKey.revokedAt),
+        };
+        await this.prisma.apiKey.upsert({
+          where: { id: apiKey.id },
+          create: { id: apiKey.id, ...data },
+          update: data,
+        });
+      },
+      get: async (id: string): Promise<ApiKey | undefined> => {
+        const row = await this.prisma.apiKey.findUnique({ where: { id } });
+        return row ? rowToApiKey(row) : undefined;
+      },
+      getByPrefix: async (prefix: string): Promise<ApiKey | undefined> => {
+        const row = await this.prisma.apiKey.findUnique({ where: { prefix } });
+        return row ? rowToApiKey(row) : undefined;
+      },
+      list: async (organizationId: string): Promise<ApiKey[]> =>
+        (await this.prisma.apiKey.findMany({ where: { organizationId } })).map(rowToApiKey),
+    },
+  };
+
   readonly policyDefinitions = {
     save: async (definition: PolicyDefinitionRecord): Promise<void> => {
       const data = {
@@ -678,6 +798,55 @@ export class PrismaStore implements AgentOSStore {
     remove: async (id: string): Promise<void> => {
       await this.prisma.policy.delete({ where: { id } });
     },
+  };
+}
+
+function rowToOrganization(row: AnyRecord): Organization {
+  return {
+    id: row.id,
+    name: row.name,
+    slug: row.slug,
+    createdAt: row.createdAt.getTime(),
+    ...(row.settings ? { settings: row.settings } : {}),
+  };
+}
+
+function rowToProject(row: AnyRecord): Project {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    name: row.name,
+    slug: row.slug,
+    createdAt: row.createdAt.getTime(),
+    ...(row.settings ? { settings: row.settings } : {}),
+  };
+}
+
+function rowToUser(row: AnyRecord): User {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    email: row.email,
+    ...(row.name ? { name: row.name } : {}),
+    role: row.role,
+    createdAt: row.createdAt.getTime(),
+    ...(row.disabled ? { disabled: true } : {}),
+  };
+}
+
+function rowToApiKey(row: AnyRecord): ApiKey {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    ...(row.projectId ? { projectId: row.projectId } : {}),
+    name: row.name,
+    hash: row.hash,
+    prefix: row.prefix,
+    role: row.role,
+    createdAt: row.createdAt.getTime(),
+    ...(row.lastUsedAt ? { lastUsedAt: row.lastUsedAt.getTime() } : {}),
+    ...(row.expiresAt ? { expiresAt: row.expiresAt.getTime() } : {}),
+    ...(row.revokedAt ? { revokedAt: row.revokedAt.getTime() } : {}),
   };
 }
 

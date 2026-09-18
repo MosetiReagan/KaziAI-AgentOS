@@ -10,8 +10,12 @@ import type {
   MemoryEntry,
   MemoryQuery,
   MemoryScope,
+  ApiKey,
   MemoryStore,
+  Organization,
+  Project,
   RunUsage,
+  User,
 } from '@kazi-ai/agentos-core';
 import type {
   AgentDefinitionRecord,
@@ -126,9 +130,42 @@ export interface AgentOSStore {
   policyDecisions: PolicyDecisionStore;
   agentDefinitions: AgentDefinitionStore;
   policyDefinitions: PolicyDefinitionStore;
+  identity: IdentityStore;
 
   /** Escape hatch for tests and one-off queries. */
   transaction<T>(fn: () => Promise<T>): Promise<T>;
+}
+
+/**
+ * Tenants, users and API keys (spec §64, §65, §79). Every other record carries
+ * `organizationId`; this is where those organizations are defined.
+ */
+export interface IdentityStore {
+  organizations: {
+    save(organization: Organization): Promise<void>;
+    get(id: string): Promise<Organization | undefined>;
+    getBySlug(slug: string): Promise<Organization | undefined>;
+    list(): Promise<Organization[]>;
+  };
+  projects: {
+    save(project: Project): Promise<void>;
+    get(id: string): Promise<Project | undefined>;
+    getBySlug(organizationId: string, slug: string): Promise<Project | undefined>;
+    list(organizationId: string): Promise<Project[]>;
+  };
+  users: {
+    save(user: User): Promise<void>;
+    get(id: string): Promise<User | undefined>;
+    getByEmail(organizationId: string, email: string): Promise<User | undefined>;
+    list(organizationId: string): Promise<User[]>;
+  };
+  apiKeys: {
+    save(apiKey: ApiKey): Promise<void>;
+    get(id: string): Promise<ApiKey | undefined>;
+    /** Lookup by the visible key prefix, used to authenticate a request. */
+    getByPrefix(prefix: string): Promise<ApiKey | undefined>;
+    list(organizationId: string): Promise<ApiKey[]>;
+  };
 }
 
 export interface CreateStoreOptions {

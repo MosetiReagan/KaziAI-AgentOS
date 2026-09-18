@@ -274,6 +274,53 @@ describe('EmbeddedStore read/write isolation', () => {
 });
 
 
+describe('identity store', () => {
+  it('persists tenants, projects, users and API keys across a restart', async () => {
+    const dir = tempDir();
+    const store = new EmbeddedStore({ dir });
+
+    await store.identity.organizations.save({
+      id: 'org_1',
+      name: 'Acme',
+      slug: 'acme',
+      createdAt: Date.now(),
+    });
+    await store.identity.projects.save({
+      id: 'prj_1',
+      organizationId: 'org_1',
+      name: 'Default',
+      slug: 'default',
+      createdAt: Date.now(),
+    });
+    await store.identity.users.save({
+      id: 'usr_1',
+      organizationId: 'org_1',
+      email: 'Operator@Acme.test',
+      role: 'operator',
+      createdAt: Date.now(),
+    });
+    await store.identity.apiKeys.save({
+      id: 'key_1',
+      organizationId: 'org_1',
+      name: 'ci',
+      hash: 'hash',
+      prefix: 'kz_live_abc',
+      role: 'developer',
+      createdAt: Date.now(),
+    });
+
+    // A second store over the same directory is what a restarted process sees.
+    const reopened = new EmbeddedStore({ dir });
+    expect((await reopened.identity.organizations.getBySlug('acme'))?.id).toBe('org_1');
+    expect((await reopened.identity.projects.getBySlug('org_1', 'default'))?.id).toBe('prj_1');
+    // Emails are matched case-insensitively: operators do not type carefully.
+    expect((await reopened.identity.users.getByEmail('org_1', 'operator@acme.test'))?.id).toBe('usr_1');
+    expect((await reopened.identity.apiKeys.getByPrefix('kz_live_abc'))?.id).toBe('key_1');
+    // Another tenant's key is not visible through this tenant's listing.
+    expect(await reopened.identity.apiKeys.list('org_other')).toHaveLength(0);
+  });
+});
+
 function event(runId: string, sequence: number, type: AgentEvent['type']): AgentEvent {
   return createEvent({ type, runId, organizationId: 'org_1', projectId: 'prj_1', sequence });
 }
