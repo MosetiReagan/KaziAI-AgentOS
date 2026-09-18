@@ -1,7 +1,7 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import { createAgentOS, type AgentOS } from '@kazi-ai/agentos';
-import type { Logger } from '@kazi-ai/agentos-core';
+import { ConfigurationError, type Logger } from '@kazi-ai/agentos-core';
 import type { AgentOSStore } from '@kazi-ai/agentos-persistence';
 import { ApiKeyAuthenticator, localPrincipal } from './auth.js';
 import { AgentCatalog } from './catalog.js';
@@ -105,6 +105,47 @@ export async function buildApi(options: ApiOptions = {}): Promise<ApiHandle> {
 
 const DOCUMENTED_PREFIXES = ['/api/', '/health', '/ready', '/version', '/docs', '/openapi.json'];
 
+/**
+ * Where a run is executed. Inline is the default; `KZ_QUEUE=store` hands runs
+ * to a worker through the durable store, and `KZ_QUEUE=bullmq` through Redis.
+ * The worker package is loaded only when it is actually used.
+ */
+async function dispatcherFor(
+  options: ApiOptions,
+  readEnv: (name: string) => string | undefined,
+  os: AgentOS,
+): Promise<RunDispatcher | undefined> {
+  const kind = readEnv('KZ_QUEUE') ?? 'inline';
+  if (kind === 'inline') return undefined;
+  if (kind !== 'store' && kind !== 'bullmq') {
+    // Never guess where work goes: an unknown backend is a configuration error,
+    // not a silent fall back to executing runs in the API process.
+    throw new ConfigurationError(
+      `Unknown KZ_QUEUE backend "${kind}"; expected inline, store or bullmq`,
+      { queue: kind },
+    );
+  }
+  const worker = await import('@kazi-ai/agentos-worker').catch((error: unknown) => {
+    throw new Error(
+      `KZ_QUEUE=${kind} needs @kazi-ai/agentos-worker to be installed: ${(error as Error).message}`,
+      { cause: error },
+    );
+  });
+  if (kind === 'bullmq') {
+    return worker.BullMqDispatcher.create({
+      ...(readEnv('REDIS_URL') ? { redisUrl: readEnv('REDIS_URL') as string } : {}),
+      ...(options.logger ? { logger: options.logger } : {}),
+    });
+  }
+  return new worker.StoreQueueDispatcher(
+    new worker.StoreRunQueue({
+      store: os.store,
+      workerId: 'api',
+      ...(options.logger ? { logger: options.logger } : {}),
+    }),
+  );
+}
+
 export async function createApiContext(options: ApiOptions = {}): Promise<ApiContext> {
   const readEnv = (name: string): string | undefined => options.env?.[name] ?? process.env[name];
   const organizationId =
@@ -140,7 +181,9 @@ export async function createApiContext(options: ApiOptions = {}): Promise<ApiCon
   });
 
   const dispatcher: RunDispatcher =
-    options.dispatcher ?? new InProcessDispatcher(os.runtime, options.logger);
+    options.dispatcher ??
+    (await dispatcherFor(options, readEnv, os)) ??
+    new InProcessDispatcher(os.runtime, options.logger);
 
   // Authentication is on unless an operator explicitly turns it off for a
   // single-tenant local install. Turning it off is a deliberate act, and it is

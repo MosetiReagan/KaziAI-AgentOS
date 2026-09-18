@@ -9,12 +9,8 @@
   "references": [
     { "path": "../../packages/core" },
     { "path": "../../packages/persistence" },
-    { "path": "../../packages/policies" },
-    { "path": "../../packages/tools" },
-    { "path": "../../packages/agent" },
+    { "path": "../../packages/recovery" },
     { "path": "../../packages/runtime" },
-    { "path": "../../packages/evaluation" },
-    { "path": "../../packages/sdk" },
-    { "path": "../worker" }
+    { "path": "../../packages/sdk" }
   ]
 }

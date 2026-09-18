@@ -24,7 +24,8 @@
       "@kazi-ai/agentos-mcp": ["packages/mcp/src/index.ts"],
       "@kazi-ai/agentos-evaluation": ["packages/evaluation/src/index.ts"],
       "@kazi-ai/agentos-bench": ["packages/bench/src/index.ts"],
-      "@kazi-ai/agentos-persistence": ["packages/persistence/src/index.ts"]
+      "@kazi-ai/agentos-persistence": ["packages/persistence/src/index.ts"],
+      "@kazi-ai/agentos-worker": ["apps/worker/src/index.ts"]
     }
   },
   "include": ["packages/*/src/**/*.ts", "packages/*/test/**/*.ts", "apps/*/src/**/*.ts", "tests/**/*.ts", "examples/**/*.ts"]

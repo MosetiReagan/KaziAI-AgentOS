@@ -1,13 +1,13 @@
 {
-  "name": "@kazi-ai/agentos-api",
+  "name": "@kazi-ai/agentos-worker",
   "version": "0.1.0",
-  "description": "The KaziAI AgentOS HTTP API: create, control, inspect and stream runs.",
+  "description": "The KaziAI AgentOS worker: claim queued runs, execute them durably, and shut down cleanly.",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "kazi-agentos-api": "./dist/bin.js"
+    "kazi-agentos-worker": "./dist/bin.js"
   },
   "exports": {
     ".": {
@@ -24,18 +24,11 @@
     "start": "node dist/bin.js"
   },
   "dependencies": {
-    "@fastify/cors": "^11.1.0",
     "@kazi-ai/agentos": "workspace:*",
-    "@kazi-ai/agentos-agent": "workspace:*",
     "@kazi-ai/agentos-core": "workspace:*",
-    "@kazi-ai/agentos-evaluation": "workspace:*",
     "@kazi-ai/agentos-persistence": "workspace:*",
-    "@kazi-ai/agentos-policies": "workspace:*",
+    "@kazi-ai/agentos-recovery": "workspace:*",
     "@kazi-ai/agentos-runtime": "workspace:*",
-    "@kazi-ai/agentos-tools": "workspace:*",
-    "@kazi-ai/agentos-worker": "workspace:*",
-    "fastify": "^5.6.1",
-    "yaml": "^2.9.1",
-    "zod": "^4.6.5"
+    "bullmq": "^5.61.0"
   }
 }
