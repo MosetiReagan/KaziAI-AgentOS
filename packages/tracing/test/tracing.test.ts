@@ -293,12 +293,24 @@ describe('buildTrace', () => {
     expect(trace.nodes.map((node) => node.startedAt)).toEqual([1_700_000_000_100, 1_700_000_000_900]);
   });
 
-  it('produces deterministic output for the same input', () => {
+  it('produces the same trace for the same input, including an unfinished run', () => {
     const run = makeRun();
     const steps = [{ id: 'stp_1', index: 0, description: 'x', phase: 'execute', status: 'completed', startedAt: 1 }];
-    const first = buildTrace({ run, steps });
-    const second = buildTrace({ run, steps });
+    const first = buildTrace({ run, steps, now: 1_700_000_100_000 });
+    const second = buildTrace({ run, steps, now: 1_700_000_100_000 });
     expect(JSON.stringify(first)).toBe(JSON.stringify(second));
+  });
+
+  it('measures an unfinished run against the clock it was given', () => {
+    const run = makeRun();
+    const inFlight = buildTrace({ run, now: run.createdAt + 5_000 });
+    expect(inFlight.summary.durationMs).toBe(5_000);
+    // A settled run does not consult the clock at all.
+    const settled = buildTrace({
+      run: { ...run, finishedAt: run.createdAt + 1_234 },
+      now: run.createdAt + 999_999,
+    });
+    expect(settled.summary.durationMs).toBe(1_234);
   });
 });
 

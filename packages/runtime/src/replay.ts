@@ -61,7 +61,9 @@ export async function replayRun(runId: string, dependencies: ReplayDependencies,
   if (!run) throw new ValidationError(`Cannot replay unknown run ${runId}`, { runId });
 
   if (mode === 'trace') {
-    const trace = buildTrace(await traceInput(dependencies, runId));
+    // Pin the clock to the run's own last write, so replaying a run that never
+    // finished still produces the same trace every time (spec §57).
+    const trace = buildTrace({ ...(await traceInput(dependencies, runId)), now: run.updatedAt });
     return {
       runId,
       mode,

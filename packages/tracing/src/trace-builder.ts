@@ -50,6 +50,12 @@ export interface TraceApprovalInput {
 
 export interface TraceInput {
   run: AgentRun;
+  /**
+   * Wall clock used when the run has not finished yet, so an in-flight trace
+   * has a duration. Injectable because a trace that is rebuilt later must be
+   * reproducible (spec §57, §89); the default reads the ambient clock.
+   */
+  now?: number;
   events?: AgentEvent[];
   steps?: TraceStepInput[];
   invocations?: TraceToolInput[];
@@ -200,7 +206,7 @@ export function buildTrace(input: TraceInput): Trace {
       failures: countFailures(nodes),
       recoveries: nodes.filter((node) => node.kind === 'recovery').length,
       checkpoints: nodes.filter((node) => node.kind === 'checkpoint').length,
-      durationMs: (run.finishedAt ?? Date.now()) - run.createdAt,
+      durationMs: (run.finishedAt ?? input.now ?? Date.now()) - run.createdAt,
       costUsd: run.usage.costUsd,
       tokens: run.usage.tokens.totalTokens,
     },
