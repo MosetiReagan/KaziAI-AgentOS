@@ -321,6 +321,63 @@ describe('identity store', () => {
   });
 });
 
+describe('webhook subscriptions', () => {
+  it('persists subscriptions per tenant and records deliveries', async () => {
+    const dir = tempDir();
+    const store = new EmbeddedStore({ dir });
+    await store.init();
+    await store.webhooks.save({
+      id: 'wh_1',
+      organizationId: 'org_1',
+      projectId: 'prj_1',
+      url: 'https://hooks.example.test/kazi',
+      events: ['run.completed'],
+      secret: 'shh',
+      active: true,
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    await store.webhooks.save({
+      id: 'wh_2',
+      organizationId: 'org_other',
+      projectId: 'prj_other',
+      url: 'https://hooks.example.test/other',
+      events: [],
+      secret: 'other',
+      active: false,
+      createdAt: 2,
+      updatedAt: 2,
+    });
+    await store.webhooks.recordDelivery({
+      id: 'whd_1',
+      subscriptionId: 'wh_1',
+      organizationId: 'org_1',
+      eventId: 'evt_1',
+      eventType: 'run.completed',
+      runId: 'run_1',
+      url: 'https://hooks.example.test/kazi',
+      status: 'delivered',
+      attempts: 1,
+      responseStatus: 200,
+      at: 5,
+      durationMs: 12,
+    });
+
+    // A subscription is never visible outside its tenant.
+    expect(await store.webhooks.list({ organizationId: 'org_1' })).toHaveLength(1);
+    expect(await store.webhooks.list({ organizationId: 'org_1', active: true })).toHaveLength(1);
+    expect(await store.webhooks.list({ organizationId: 'org_other', active: true })).toHaveLength(0);
+    expect((await store.webhooks.listDeliveries('wh_1'))[0]?.responseStatus).toBe(200);
+
+    // A restarted process sees the same subscriptions.
+    const reopened = new EmbeddedStore({ dir });
+    await reopened.init();
+    expect((await reopened.webhooks.get('wh_1'))?.url).toBe('https://hooks.example.test/kazi');
+    await reopened.webhooks.remove('wh_1');
+    expect(await reopened.webhooks.get('wh_1')).toBeUndefined();
+  });
+});
+
 function event(runId: string, sequence: number, type: AgentEvent['type']): AgentEvent {
   return createEvent({ type, runId, organizationId: 'org_1', projectId: 'prj_1', sequence });
 }

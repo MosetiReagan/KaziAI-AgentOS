@@ -35,6 +35,10 @@ import type {
   RunListFilter,
   RunStepRecord,
   ToolInvocationRecord,
+  WebhookDeliveryRecord,
+  WebhookListFilter,
+  WebhookStore,
+  WebhookSubscriptionRecord,
 } from '../records.js';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -764,6 +768,72 @@ export class PrismaStore implements AgentOSStore {
     },
   };
 
+  readonly webhooks: WebhookStore = {
+    save: async (subscription: WebhookSubscriptionRecord): Promise<void> => {
+      const data = {
+        organizationId: subscription.organizationId,
+        projectId: subscription.projectId,
+        url: subscription.url,
+        events: subscription.events,
+        secret: subscription.secret,
+        active: subscription.active,
+        description: json(subscription.description),
+        createdAt: new Date(subscription.createdAt),
+        updatedAt: new Date(subscription.updatedAt),
+      };
+      await this.prisma.webhookSubscription.upsert({
+        where: { id: subscription.id },
+        create: { id: subscription.id, ...data },
+        update: data,
+      });
+    },
+    get: async (id: string): Promise<WebhookSubscriptionRecord | undefined> => {
+      const row = await this.prisma.webhookSubscription.findUnique({ where: { id } });
+      return row ? rowToWebhook(row) : undefined;
+    },
+    list: async (filter: WebhookListFilter = {}): Promise<WebhookSubscriptionRecord[]> => {
+      const where: AnyRecord = {};
+      if (filter.organizationId) where.organizationId = filter.organizationId;
+      if (filter.projectId) where.projectId = filter.projectId;
+      if (filter.active !== undefined) where.active = filter.active;
+      const rows = await this.prisma.webhookSubscription.findMany({ where, orderBy: { createdAt: 'asc' } });
+      return rows.map(rowToWebhook);
+    },
+    remove: async (id: string): Promise<void> => {
+      await this.prisma.webhookSubscription.deleteMany({ where: { id } });
+    },
+    recordDelivery: async (delivery: WebhookDeliveryRecord): Promise<void> => {
+      await this.prisma.webhookDelivery.create({
+        data: {
+          id: delivery.id,
+          subscriptionId: delivery.subscriptionId,
+          organizationId: delivery.organizationId,
+          eventId: delivery.eventId,
+          eventType: delivery.eventType,
+          runId: json(delivery.runId),
+          url: delivery.url,
+          status: delivery.status,
+          attempts: delivery.attempts,
+          responseStatus: json(delivery.responseStatus),
+          error: json(delivery.error),
+          durationMs: delivery.durationMs,
+          at: new Date(delivery.at),
+        },
+      });
+    },
+    listDeliveries: async (
+      subscriptionId: string,
+      options: { limit?: number } = {},
+    ): Promise<WebhookDeliveryRecord[]> => {
+      const rows = await this.prisma.webhookDelivery.findMany({
+        where: { subscriptionId },
+        orderBy: { at: 'desc' },
+        take: options.limit ?? 50,
+      });
+      return rows.map(rowToWebhookDelivery);
+    },
+  };
+
   readonly policyDefinitions = {
     save: async (definition: PolicyDefinitionRecord): Promise<void> => {
       const data = {
@@ -798,6 +868,41 @@ export class PrismaStore implements AgentOSStore {
     remove: async (id: string): Promise<void> => {
       await this.prisma.policy.delete({ where: { id } });
     },
+  };
+}
+
+function rowToWebhook(row: AnyRecord): WebhookSubscriptionRecord {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    projectId: row.projectId,
+    url: row.url,
+    events: [...(row.events ?? [])],
+    secret: row.secret,
+    active: row.active,
+    ...(row.description === null || row.description === undefined ? {} : { description: row.description }),
+    createdAt: row.createdAt.getTime(),
+    updatedAt: row.updatedAt.getTime(),
+  };
+}
+
+function rowToWebhookDelivery(row: AnyRecord): WebhookDeliveryRecord {
+  return {
+    id: row.id,
+    subscriptionId: row.subscriptionId,
+    organizationId: row.organizationId,
+    eventId: row.eventId,
+    eventType: row.eventType,
+    ...(row.runId === null || row.runId === undefined ? {} : { runId: row.runId }),
+    url: row.url,
+    status: row.status === 'delivered' ? 'delivered' : 'failed',
+    attempts: row.attempts,
+    ...(row.responseStatus === null || row.responseStatus === undefined
+      ? {}
+      : { responseStatus: row.responseStatus }),
+    ...(row.error === null || row.error === undefined ? {} : { error: row.error }),
+    durationMs: row.durationMs,
+    at: row.at.getTime(),
   };
 }
 

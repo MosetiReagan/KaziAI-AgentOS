@@ -33,6 +33,10 @@ import type {
   RunListFilter,
   RunStepRecord,
   ToolInvocationRecord,
+  WebhookDeliveryRecord,
+  WebhookListFilter,
+  WebhookStore,
+  WebhookSubscriptionRecord,
 } from '../records.js';
 import { JsonlAppendLog, JsonlLog } from './jsonl.js';
 import { EmbeddedMemoryStore } from './memory-store.js';
@@ -76,6 +80,8 @@ export class EmbeddedStore implements AgentOSStore {
   private readonly projectLog: JsonlLog<Project>;
   private readonly userLog: JsonlLog<User>;
   private readonly apiKeyLog: JsonlLog<ApiKey>;
+  private readonly webhookLog: JsonlLog<WebhookSubscriptionRecord>;
+  private readonly webhookDeliveryLog: JsonlAppendLog<WebhookDeliveryRecord>;
   private readonly memoryStore: EmbeddedMemoryStore;
   private readonly sequences = new Map<string, number>();
   private readonly journalSequences = new Map<string, number>();
@@ -110,6 +116,8 @@ export class EmbeddedStore implements AgentOSStore {
     this.projectLog = new JsonlLog<Project>(opts('projects'));
     this.userLog = new JsonlLog<User>(opts('users'));
     this.apiKeyLog = new JsonlLog<ApiKey>(opts('api-keys'));
+    this.webhookLog = new JsonlLog<WebhookSubscriptionRecord>(opts('webhooks'));
+    this.webhookDeliveryLog = new JsonlAppendLog<WebhookDeliveryRecord>(opts('webhook-deliveries'));
     this.memoryStore = new EmbeddedMemoryStore({ ...(this.dir ? { dir: this.dir } : {}), now: options.now });
   }
 
@@ -130,6 +138,7 @@ export class EmbeddedStore implements AgentOSStore {
     for (const log of [this.runLog, this.checkpointLog, this.stateLog, this.approvalLog, this.policyDefinitionLog]) {
       log.compact();
     }
+    this.webhookLog.compact();
   }
 
   async healthCheck(): Promise<{ ok: boolean; detail?: string }> {
@@ -499,6 +508,36 @@ export class EmbeddedStore implements AgentOSStore {
     remove: async (id: string): Promise<void> => {
       this.policyDefinitionLog.delete(id);
     },
+  };
+
+  readonly webhooks: WebhookStore = {
+    save: async (subscription: WebhookSubscriptionRecord): Promise<void> => {
+      this.webhookLog.put(subscription);
+    },
+    get: async (id: string): Promise<WebhookSubscriptionRecord | undefined> => this.webhookLog.get(id),
+    list: async (filter: WebhookListFilter = {}): Promise<WebhookSubscriptionRecord[]> =>
+      this.webhookLog
+        .filter((subscription) => {
+          if (filter.organizationId && subscription.organizationId !== filter.organizationId) return false;
+          if (filter.projectId && subscription.projectId !== filter.projectId) return false;
+          if (filter.active !== undefined && subscription.active !== filter.active) return false;
+          return true;
+        })
+        .sort((left, right) => left.createdAt - right.createdAt),
+    remove: async (id: string): Promise<void> => {
+      this.webhookLog.delete(id);
+    },
+    recordDelivery: async (delivery: WebhookDeliveryRecord): Promise<void> => {
+      this.webhookDeliveryLog.append(delivery);
+    },
+    listDeliveries: async (
+      subscriptionId: string,
+      options: { limit?: number } = {},
+    ): Promise<WebhookDeliveryRecord[]> =>
+      this.webhookDeliveryLog
+        .filter((delivery) => delivery.subscriptionId === subscriptionId)
+        .sort((left, right) => right.at - left.at)
+        .slice(0, options.limit ?? 50),
   };
 
   /** Test helper: run everything and surface the first failure with context. */

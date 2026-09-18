@@ -135,3 +135,54 @@ export interface RunListFilter {
   direction?: 'asc' | 'desc';
 }
 
+
+/**
+ * A webhook subscription belongs to a tenant and (optionally) a project. The
+ * signing secret is only ever used to compute an HMAC over the delivery body
+ * (spec §98); it is never echoed back by the API.
+ */
+export interface WebhookSubscriptionRecord {
+  id: string;
+  organizationId: string;
+  projectId: string;
+  url: string;
+  /** Event types to deliver; an empty list means every event. */
+  events: string[];
+  secret: string;
+  active: boolean;
+  description?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface WebhookDeliveryRecord {
+  id: string;
+  subscriptionId: string;
+  organizationId: string;
+  eventId: string;
+  eventType: string;
+  runId?: string;
+  url: string;
+  status: 'delivered' | 'failed';
+  attempts: number;
+  responseStatus?: number;
+  error?: string;
+  at: number;
+  durationMs: number;
+}
+
+export interface WebhookListFilter {
+  organizationId?: string;
+  projectId?: string;
+  active?: boolean;
+}
+
+/** Durable webhook subscriptions and their delivery log (spec §98). */
+export interface WebhookStore {
+  save(subscription: WebhookSubscriptionRecord): Promise<void>;
+  get(id: string): Promise<WebhookSubscriptionRecord | undefined>;
+  list(filter?: WebhookListFilter): Promise<WebhookSubscriptionRecord[]>;
+  remove(id: string): Promise<void>;
+  recordDelivery(delivery: WebhookDeliveryRecord): Promise<void>;
+  listDeliveries(subscriptionId: string, options?: { limit?: number }): Promise<WebhookDeliveryRecord[]>;
+}

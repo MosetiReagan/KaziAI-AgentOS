@@ -29,6 +29,7 @@ import type {
   RunListFilter,
   RunStepRecord,
   ToolInvocationRecord,
+  WebhookStore,
 } from './records.js';
 
 export interface RunStore {
@@ -131,6 +132,7 @@ export interface AgentOSStore {
   agentDefinitions: AgentDefinitionStore;
   policyDefinitions: PolicyDefinitionStore;
   identity: IdentityStore;
+  webhooks: WebhookStore;
 
   /** Escape hatch for tests and one-off queries. */
   transaction<T>(fn: () => Promise<T>): Promise<T>;

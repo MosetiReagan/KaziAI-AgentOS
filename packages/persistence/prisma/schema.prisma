@@ -27,6 +27,7 @@ model Organization {
   memories  MemoryEntry[]
   approvals Approval[]
   usage     ModelUsage[]
+  webhooks  WebhookSubscription[]
 
   @@map("organizations")
 }
@@ -43,6 +44,7 @@ model Project {
   runs         Run[]
   agents       Agent[]
   policies     Policy[]
+  webhooks     WebhookSubscription[]
 
   @@unique([organizationId, slug])
   @@index([organizationId])
@@ -520,4 +522,49 @@ model RecoveryAttempt {
 
   @@index([runId])
   @@map("recovery_attempts")
+}
+
+/// Webhook subscriptions (spec §98). The signing secret is a per-subscription
+/// shared secret used to HMAC the delivery body.
+model WebhookSubscription {
+  id             String   @id
+  organizationId String
+  projectId      String
+  url            String
+  events         String[]
+  secret         String
+  active         Boolean  @default(true)
+  description    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now())
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  deliveries   WebhookDelivery[]
+
+  @@index([organizationId, projectId])
+  @@index([active])
+  @@map("webhook_subscriptions")
+}
+
+model WebhookDelivery {
+  id             String   @id
+  subscriptionId String
+  organizationId String
+  eventId        String
+  eventType      String
+  runId          String?
+  url            String
+  status         String
+  attempts       Int
+  responseStatus Int?
+  error          String?
+  durationMs     Int
+  at             DateTime
+
+  subscription WebhookSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([subscriptionId, at])
+  @@index([organizationId, at])
+  @@map("webhook_deliveries")
 }
