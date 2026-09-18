@@ -4,6 +4,7 @@ export * from './result.js';
 export * from './json.js';
 export * from './hash.js';
 export * from './redact.js';
+export * from './secrets.js';
 export * from './clock.js';
 export * from './logger.js';
 export * from './async.js';

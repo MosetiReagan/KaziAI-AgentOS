@@ -9,6 +9,7 @@ import {
   DefaultBudgetManager,
   InMemoryEventBus,
   InMemoryLockManager,
+  SecretRedactor,
   emptyUsage,
   hashObject,
   isTerminalState,
@@ -156,6 +157,12 @@ export class AgentOSRuntime implements AgentRuntime {
   private readonly contextManager: ContextManager;
   private readonly memory?: MemoryManager;
   private readonly secrets: SecretResolver;
+  /**
+   * Every secret this process has resolved. Anything it writes down is scrubbed
+   * against this first, so a credential the runtime was handed can never end up
+   * in an event, a journal entry or an observation (spec §66).
+   */
+  private readonly redactor: SecretRedactor = new SecretRedactor();
   private readonly environmentProvider?: EnvironmentProviderConfig;
   private readonly artifacts = new Map<string, ArtifactRef[]>();
   private readonly spansBuffer: SpanRecorder;
@@ -188,7 +195,17 @@ export class AgentOSRuntime implements AgentRuntime {
       });
     this.backpressure = new Backpressure(options.backpressure ?? {}, this.store, this.logger);
     this.environmentProvider = options.environment;
-    this.secrets = normalizeSecrets(options.secrets);
+    const resolvedSecrets = normalizeSecrets(options.secrets);
+    // Resolving a secret is also the moment we learn its value: record it so it
+    // can be scrubbed from anything persisted afterwards.
+    this.secrets = {
+      resolve: async (reference: string) => {
+        const value = await resolvedSecrets.resolve(reference);
+        this.redactor.remember(value);
+        return value;
+      },
+      has: (reference: string) => resolvedSecrets.has(reference),
+    };
 
     const registry = options.tools ?? new DefaultToolRegistry([]);
     this.tools = registry instanceof DefaultToolRegistry ? registry : (registry as ToolRegistry);
@@ -250,6 +267,7 @@ export class AgentOSRuntime implements AgentRuntime {
       });
 
     this.executor = new Executor({
+      redactor: this.redactor,
       registry: this.tools,
       journal: this.store.actions,
       policy: this.policies,
@@ -325,6 +343,7 @@ export class AgentOSRuntime implements AgentRuntime {
       // Tool-declared risk is a floor: an MCP server or custom tool that marks
       // itself CRITICAL always gets an approval gate (spec §24).
       risk: this.defaultClassifier(),
+      redactor: this.redactor,
       spans: this.spans,
       logger: this.logger,
       now: this.now,

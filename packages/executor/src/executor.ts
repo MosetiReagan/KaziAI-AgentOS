@@ -22,6 +22,7 @@ import {
   type ToolContext,
   type ToolPermissions,
   type ToolResult,
+  type Redactor,
 } from '@kazi-ai/agentos-core';
 import type { ApprovalManager } from '@kazi-ai/agentos-policies';
 import { planWaves } from './dag.js';
@@ -105,6 +106,12 @@ export interface ExecutorOptions {
   concurrency?: number;
   /** Overrides the tool's declared timeout. */
   defaultToolTimeoutMs?: number;
+  /**
+   * Removes known secret values before anything is written down. The executor
+   * is the only place a tool's raw output exists, so it is the right place to
+   * scrub it (spec §66).
+   */
+  redactor?: Redactor;
 }
 
 /**
@@ -411,7 +418,7 @@ export class Executor {
         status: result.success ? 'succeeded' : 'failed',
         result,
         durationMs,
-        observation: buildObservation(action, result),
+        observation: buildObservation(action, result, this.options.redactor),
         ...(result.success
           ? {}
           : {
@@ -446,7 +453,7 @@ export class Executor {
       runId,
       idempotencyKey: action.idempotencyKey,
       status,
-      ...(result === undefined ? {} : { result }),
+      ...(result === undefined ? {} : { result: this.options.redactor?.scrubDeep(result) ?? result }),
       ...(error === undefined ? {} : { error: error.toJSON() as JsonObject }),
       finishedAt: Date.now(),
     });
@@ -474,17 +481,24 @@ function skippedOutcome(action: AgentAction, reason: string): ActionOutcome {
   };
 }
 
-function buildObservation(action: AgentAction, result: ToolResult): Observation {
+function buildObservation(
+  action: AgentAction,
+  result: ToolResult,
+  redactor?: Redactor,
+): Observation {
   const summary = result.success
     ? `${action.toolId} succeeded`
     : `${action.toolId} failed: ${result.error?.message ?? 'unknown error'}`;
+  const detail = truncateJson(result.output, 8_192).value;
   return {
     id: `obs_${String(action.id)}`,
     at: Date.now(),
     source: 'tool',
     trust: 'untrusted-tool',
     summary,
-    detail: truncateJson(result.output, 8_192).value,
+    // Tool output is untrusted and may quote a credential the run resolved;
+    // what is persisted and what the model is shown are both scrubbed.
+    detail: redactor ? (redactor.scrubDeep(detail) as JsonValue) : detail,
     ...(action.stepId ? { stepId: action.stepId as string } : {}),
     toolId: action.toolId,
   };
