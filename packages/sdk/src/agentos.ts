@@ -46,6 +46,15 @@ export interface AgentOSOptions {
   /** `memory` is the zero-dependency durable JSONL store; `postgres` uses Prisma. */
   driver?: 'memory' | 'postgres';
   databaseUrl?: string;
+  /**
+   * Bring your own persistence instead of letting AgentOS build one
+   * (spec §74, §100). Embedders use it to point the runtime at a store they
+   * already manage — a different driver, a sharded tenant database, or a
+   * proxied store used to inject faults in tests. It takes precedence over
+   * `driver`/`databaseUrl`, and because it belongs to the caller, AgentOS
+   * neither initialises nor closes it.
+   */
+  store?: AgentOSStore;
   /** Register these providers instead of (or in addition to) the ones in the environment. */
   providers?: ModelProvider[];
   /** Discover providers from the environment (OPENAI_API_KEY, ANTHROPIC_API_KEY, ...). */
@@ -123,12 +132,13 @@ export class AgentOS {
   static async create(options: AgentOSOptions = {}): Promise<AgentOS> {
     const dataDir = options.dataDir ?? `${process.cwd()}/.kazi`;
     const store =
-      options.driver === 'postgres'
+      options.store ??
+      (options.driver === 'postgres'
         ? await createStore({
             driver: 'postgres',
             ...(options.databaseUrl ? { databaseUrl: options.databaseUrl } : {}),
           })
-        : await createStore({ driver: 'memory', dataDir });
+        : await createStore({ driver: 'memory', dataDir }));
 
     const providers = new ModelProviderRegistry();
     for (const provider of options.providers ?? []) providers.register(provider);
@@ -279,7 +289,9 @@ export class AgentOS {
     this.closed = true;
     await this.mcp?.manager.close().catch(() => undefined);
     await this.runtime.close().catch(() => undefined);
-    await this.store.close().catch(() => undefined);
+    // A store the caller supplied is the caller's to close; AgentOS only
+    // closes what it created.
+    if (!this.options.store) await this.store.close().catch(() => undefined);
   }
 }
 

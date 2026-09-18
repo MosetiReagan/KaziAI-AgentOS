@@ -12,6 +12,8 @@ import {
   type Planner,
   type ToolPermissions,
 } from '@kazi-ai/agentos-core';
+import type { AgentOSStore } from '@kazi-ai/agentos-persistence';
+import { createStore } from '@kazi-ai/agentos-persistence';
 import { createAgentOS, defineTool, type AgentOS } from '../src/index.js';
 
 let os: AgentOS | undefined;
@@ -235,6 +237,57 @@ describe('Agent SDK', () => {
     await agent.cancel(run.id);
 
     expect((await agent.getRun(run.id)).status).toBe('CANCELLED');
+  });
+});
+
+describe('a deployment can supply its own store', () => {
+  it('uses the injected store and leaves it open for the caller', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'kazi-sdk-store-'));
+    const store = await createStore({ driver: 'memory', dataDir: join(dir, 'custom') });
+    const calls: string[] = [];
+    const observed: AgentOSStore = new Proxy(store, {
+      get(target, property, receiver) {
+        if (property === 'runs') {
+          return new Proxy(target.runs, {
+            get(runs, method, runsReceiver) {
+              const value = Reflect.get(runs, method, runsReceiver);
+              if (typeof value !== 'function') return value;
+              return (...args: unknown[]) => {
+                calls.push(String(method));
+                return (value as (...inner: unknown[]) => unknown).apply(runs, args);
+              };
+            },
+          });
+        }
+        return Reflect.get(target, property, receiver);
+      },
+    });
+
+    os = await createAgentOS({
+      store: observed,
+      organizationId: 'org_test',
+      projectId: 'prj_test',
+      providersFromEnv: false,
+      providers: [new FakeModelProvider({ turns: WRITE_AND_FINISH, onExhausted: { text: 'done' } })],
+      logger: new NullLogger(),
+    });
+    const agent = os.agent({
+      id: 'store-agent',
+      model: { provider: 'fake', model: 'fake-1' },
+      tools: ['filesystem'],
+      planning: false,
+    });
+    const result = await agent.run({ goal: 'Write result.txt' });
+    expect(result.success).toBe(true);
+    // The run really went through the injected store, not a private copy.
+    expect(calls).toContain('create');
+    expect(calls).toContain('get');
+
+    await os.close();
+    os = undefined;
+    // The store belongs to the caller, so AgentOS must not have closed it.
+    await expect(store.runs.get(result.runId)).resolves.toBeDefined();
+    await store.close();
   });
 });
 
