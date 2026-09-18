@@ -1,0 +1,29 @@
+{
+  "name": "@kazi-ai/agentos-gateway",
+  "version": "0.1.0",
+  "description": "The KaziAI AgentOS gateway: one origin in front of the API, the dashboard and the streams they share.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "kazi-agentos-gateway": "./dist/bin.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "tsc -b --clean",
+    "start": "node dist/bin.js"
+  },
+  "dependencies": {
+    "@kazi-ai/agentos-core": "workspace:*"
+  }
+}
