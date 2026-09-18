@@ -9,7 +9,18 @@ export type ToolKind = 'builtin' | 'http' | 'mcp' | 'database' | 'custom';
 /** Permission surface a tool may request from the runtime. */
 export interface ToolPermissions {
   filesystem?: { read?: boolean; write?: boolean; delete?: boolean; roots?: string[] };
-  terminal?: { execute?: boolean; allowCommands?: string[]; denyCommands?: string[] };
+  terminal?: {
+    execute?: boolean;
+    allowCommands?: string[];
+    denyCommands?: string[];
+    /**
+     * Run commands that declare `sandbox.requiresIsolation` even when the
+     * environment is not an isolation boundary. This is a deliberate, recorded
+     * acceptance that agent commands run as the host user; it appears in the
+     * run's configuration snapshot and in the policy decision that allowed it.
+     */
+    allowUnisolated?: boolean;
+  };
   network?: { enabled?: boolean; allowedHosts?: string[]; methods?: string[] };
   git?: { read?: boolean; commit?: boolean; push?: boolean };
   database?: { read?: boolean; write?: boolean; connections?: string[] };

@@ -58,7 +58,11 @@ export interface ExecutionRequest {
   organizationId: string;
   projectId: string;
   environment: string;
+  /** Whether the active environment is a real isolation boundary (spec §15). */
+  isolatingEnvironment?: boolean;
   workspaceDir: string;
+  /** The run's permissions, so a policy rule can see what was explicitly granted. */
+  permissions?: ToolPermissions;
   trust: string;
   requestOrigin: PolicyContext['requestOrigin'];
   actions: AgentAction[];
@@ -236,6 +240,12 @@ export class Executor {
       trust: request.trust,
       requestOrigin: request.requestOrigin,
       ...(request.remainingBudget ? { remainingBudget: request.remainingBudget } : {}),
+      metadata: {
+        isolatingEnvironment: request.isolatingEnvironment === true,
+        ...(request.permissions
+          ? { permissions: request.permissions as unknown as JsonValue }
+          : {}),
+      },
     };
     const decision = await this.options.policy.evaluate(action, policyContext);
     await this.options.hooks?.onPolicyDecision?.({ action, decision });

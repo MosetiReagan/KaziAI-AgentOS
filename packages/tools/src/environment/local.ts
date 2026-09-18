@@ -48,6 +48,8 @@ const BASE_ENV_KEYS = ['PATH', 'LANG', 'LC_ALL', 'TZ', 'TERM', 'SHELL'];
  */
 export class LocalExecutionEnvironment implements ExecutionEnvironment {
   readonly kind = 'local';
+  /** Host processes share the host user's access: this is a confinement, not a boundary. */
+  readonly isolating = false;
   private readonly guard: PathGuard;
   private readonly snapshotStoreDir: string;
   private ready = false;

@@ -37,6 +37,10 @@ export const permissionsSchema = z
         execute: z.boolean().optional(),
         allowCommands: z.array(z.string()).optional(),
         denyCommands: z.array(z.string()).optional(),
+        allowUnisolated: z
+          .boolean()
+          .optional()
+          .describe('Run isolation-requiring tools on an environment that does not isolate them'),
       })
       .optional(),
     network: z

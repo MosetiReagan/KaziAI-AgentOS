@@ -184,7 +184,61 @@ export function policyRuleSpec(rule: PolicyRule): PolicyRuleSpec | undefined {
   return (rule as PolicyRule & { spec?: PolicyRuleSpec }).spec;
 }
 
+/**
+ * Environment kinds that are a genuine isolation boundary. A kind that is not
+ * listed is treated as unisolated, which is the safe direction: an unknown
+ * environment cannot silently satisfy a tool's isolation requirement.
+ */
+export const ISOLATING_ENVIRONMENT_KINDS: readonly string[] = [
+  'docker',
+  'kubernetes',
+  'podman',
+  'firecracker',
+  'gvisor',
+  'remote',
+  'vm',
+];
+
+/** Does the policy context describe an environment that really isolates? */
+export function environmentIsolates(context: PolicyContext): boolean {
+  const declared = context.metadata?.['isolatingEnvironment'];
+  if (declared === true) return true;
+  return ISOLATING_ENVIRONMENT_KINDS.includes(context.environment);
+}
+
+/** Did this run explicitly accept running isolation-requiring tools bare? */
+export function allowUnisolatedTools(context: PolicyContext): boolean {
+  const permissions = context.metadata?.['permissions'];
+  if (permissions === null || typeof permissions !== 'object' || Array.isArray(permissions)) {
+    return false;
+  }
+  const terminal = (permissions as Record<string, unknown>)['terminal'];
+  if (terminal === null || typeof terminal !== 'object' || Array.isArray(terminal)) return false;
+  return (terminal as Record<string, unknown>)['allowUnisolated'] === true;
+}
+
+/** The sandbox a tool declared for itself, carried on the action. */
+export function actionSandbox(action: AgentAction): JsonObject | undefined {
+  const sandbox = action.metadata?.['sandbox'];
+  if (sandbox === null || typeof sandbox !== 'object' || Array.isArray(sandbox)) return undefined;
+  return sandbox as JsonObject;
+}
+
 export const DEFAULT_RULES: PolicyRule[] = [
+  policyRule({
+    id: 'deny.sandbox.unisolated',
+    description:
+      'A tool that needs an isolated sandbox is refused on an environment that does not isolate it',
+    tools: ['*'],
+    outcome: 'DENY',
+    risk: 'HIGH',
+    priority: 1000,
+    when: (action, context) => {
+      if (environmentIsolates(context)) return false;
+      if (actionSandbox(action)?.['requiresIsolation'] !== true) return false;
+      return !allowUnisolatedTools(context);
+    },
+  }),
   policyRule({
     id: 'deny.filesystem.delete.production',
     description: 'Never delete production data without an explicit override',

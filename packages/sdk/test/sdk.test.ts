@@ -107,6 +107,31 @@ describe('Agent SDK', () => {
     expect(run.config.tools).toEqual(['filesystem.*']);
   });
 
+  it('lets a run narrow its definition permissions but never widen them', async () => {
+    const agentos = await agentOSFor([{ text: 'nothing to do' }]);
+    const agent = agentos.agent({
+      id: 'developer',
+      model: { provider: 'fake', model: 'fake-1' },
+      tools: ['filesystem'],
+      permissions: { filesystem: { read: true, write: false }, network: { enabled: false } },
+    });
+
+    // Asking for more than the definition granted gets the intersection, not
+    // the request: a run cannot hand itself a capability (spec §21, §47).
+    const widened = await agent.createRun({
+      goal: 'Try to widen',
+      permissions: { filesystem: { read: true, write: true }, network: { enabled: true } },
+    });
+    expect(widened.config.permissions.filesystem).toEqual({ read: true, write: false });
+    expect(widened.config.permissions.network).toEqual({ enabled: false });
+
+    const narrowed = await agent.createRun({
+      goal: 'Narrow',
+      permissions: { filesystem: { read: true } },
+    });
+    expect(narrowed.config.permissions.filesystem).toEqual({ read: true, write: false });
+  });
+
   it('registers a custom tool defined with defineTool and executes it', async () => {
     const agentos = await agentOSFor([
       {

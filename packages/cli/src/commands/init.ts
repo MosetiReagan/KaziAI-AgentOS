@@ -92,6 +92,11 @@ permissions:
     delete: false
   terminal:
     execute: true
+    # Commands run as your user on your machine, not in a container. That has to
+    # be said out loud: a tool that needs an isolated sandbox is refused on a
+    # host-process environment unless the run explicitly opts in. Drop this line
+    # once agents run under the Docker environment.
+    allow_unisolated: true
   network:
     enabled: false
   git:

@@ -107,6 +107,8 @@ export class DockerRunnerImpl implements DockerRunner {
  */
 export class DockerExecutionEnvironment implements ExecutionEnvironment {
   readonly kind = 'docker';
+  /** Commands run in a container, so this is a real boundary. */
+  readonly isolating = true;
   private containerId: string | undefined;
   private readonly runner: DockerRunner;
   private readonly snapshotStoreDir: string;

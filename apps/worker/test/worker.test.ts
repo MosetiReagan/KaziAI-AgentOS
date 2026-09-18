@@ -50,7 +50,18 @@ async function build(
 
 /** Declare (and register) the agent a test is about to run. */
 async function developerAgent(agentos: AgentOS, tools: string[] = ['filesystem']) {
-  return agentos.agent({ id: 'developer', model: { provider: 'fake', model: 'fake-1' }, tools });
+  return agentos.agent({
+    id: 'developer',
+    model: { provider: 'fake', model: 'fake-1' },
+    tools,
+    // These tests run commands as host processes. Saying so explicitly is the
+    // same statement a production agent definition has to make (spec §15).
+    permissions: {
+      filesystem: { read: true, write: true, delete: true },
+      terminal: { execute: true, allowUnisolated: true },
+      network: { enabled: false },
+    },
+  });
 }
 
 describe('durable run queue', () => {

@@ -74,7 +74,7 @@ function operationOf(args: JsonValue): string | undefined {
 export interface ActionFromToolCallInput {
   run: AgentRun;
   toolCall: ToolCallRequest;
-  tool: Pick<AgentTool, 'id'>;
+  tool: Pick<AgentTool, 'id'> & Pick<Partial<AgentTool>, 'sandbox'>;
   stepId?: string;
   stepIndex: number;
   attempt: number;
@@ -97,10 +97,24 @@ export function actionFromToolCall(input: ActionFromToolCallInput): AgentAction 
     status: 'pending',
     createdAt: Date.now(),
     attempt: input.attempt,
-    metadata: { toolCallId: input.toolCall.id },
+    metadata: {
+      toolCallId: input.toolCall.id,
+      // The policy engine runs before the tool does, so it has to be able to see
+      // what the tool needs from its environment (spec §15).
+      ...(sandboxOf(input.tool) === undefined ? {} : { sandbox: sandboxOf(input.tool) }),
+    },
   };
   if (input.stepId) action.stepId = input.stepId as AgentAction['stepId'];
   return action;
+}
+
+function sandboxOf(tool: Pick<Partial<AgentTool>, 'sandbox'>): JsonObject | undefined {
+  const sandbox = tool.sandbox;
+  if (!sandbox) return undefined;
+  const result: JsonObject = {};
+  if (sandbox.workspaceConfined !== undefined) result['workspaceConfined'] = sandbox.workspaceConfined;
+  if (sandbox.requiresIsolation !== undefined) result['requiresIsolation'] = sandbox.requiresIsolation;
+  return Object.keys(result).length === 0 ? undefined : result;
 }
 
 /**

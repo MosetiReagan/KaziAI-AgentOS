@@ -1,6 +1,7 @@
 import {
   ConfigurationError,
   ValidationError,
+  mergePermissions,
   type AgentRun,
   type AgentRunInput,
   type AgentRunResult,
@@ -89,6 +90,12 @@ export const DEFAULT_AGENT_TOOLS = ['filesystem', 'terminal'];
  * specification (spec §21): its own workspace is readable and writable, the
  * terminal is available, but the network is off and nothing can be pushed to a
  * remote repository. Everything else is default-deny.
+ *
+ * Note what is *not* here: `terminal.allowUnisolated`. A tool that declares
+ * `sandbox.requiresIsolation` is refused on an environment that does not
+ * isolate it, so an agent on a host-process environment has to opt in
+ * explicitly — and that choice is then visible in the run's configuration
+ * snapshot and in the policy decision that allowed it (spec §15).
  */
 export const DEFAULT_AGENT_PERMISSIONS: ToolPermissions = {
   filesystem: { read: true, write: true, delete: false },
@@ -224,9 +231,10 @@ export class Agent {
       );
     }
     const limits = { ...this.definition.limits, ...(request.limits ?? {}) };
-    // The definition already carries the effective grant: `AgentOptions` fills in
-    // the workspace-confined default, a parsed definition is used as written.
-    const permissions = { ...this.definition.permissions, ...(request.permissions ?? {}) };
+    // The definition carries the effective grant, and a run may only narrow it.
+    // Spreading here would let a caller replace a whole permission family and
+    // thereby widen what the agent definition allowed (spec §21, §47).
+    const permissions = mergePermissions([this.definition.permissions, request.permissions]);
     return {
       goal: request.goal,
       agentId: this.id,
@@ -354,6 +362,9 @@ function toRawPermissions(permissions: ToolPermissions): Record<string, unknown>
             ...(permissions.terminal.denyCommands === undefined
               ? {}
               : { deny_commands: permissions.terminal.denyCommands }),
+            ...(permissions.terminal.allowUnisolated === undefined
+              ? {}
+              : { allow_unisolated: permissions.terminal.allowUnisolated }),
           },
         }
       : {}),

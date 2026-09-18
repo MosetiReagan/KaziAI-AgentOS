@@ -107,6 +107,10 @@ const permissionsSchema = z
         execute: z.boolean().optional(),
         allow_commands: z.array(z.string()).optional(),
         deny_commands: z.array(z.string()).optional(),
+        allow_unisolated: z
+          .boolean()
+          .optional()
+          .describe('Run isolation-requiring tools on an environment that does not isolate them'),
       })
       .optional(),
     network: z
@@ -380,6 +384,9 @@ function permissionsOf(raw: z.infer<typeof permissionsSchema>): ToolPermissions 
       ...(raw.terminal.execute === undefined ? {} : { execute: raw.terminal.execute }),
       ...(raw.terminal.allow_commands === undefined ? {} : { allowCommands: raw.terminal.allow_commands }),
       ...(raw.terminal.deny_commands === undefined ? {} : { denyCommands: raw.terminal.deny_commands }),
+      ...(raw.terminal.allow_unisolated === undefined
+        ? {}
+        : { allowUnisolated: raw.terminal.allow_unisolated }),
     };
   }
   if (raw.network) {

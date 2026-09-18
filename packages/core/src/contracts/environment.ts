@@ -8,6 +8,14 @@ import type { ShellCommand, ShellExecutionOptions, ShellResult } from './tool.js
  */
 export interface ExecutionEnvironment {
   readonly kind: string;
+  /**
+   * True only when this environment is a real isolation boundary — a container,
+   * a VM or a remote sandbox. A host-process environment must leave this false
+   * (or unset, which is treated as false), because tools that declare
+   * `sandbox.requiresIsolation` are refused unless something actually isolates
+   * them (spec §15).
+   */
+  readonly isolating?: boolean;
   create(): Promise<void>;
   execute(command: ShellCommand, options?: ShellExecutionOptions): Promise<ShellResult>;
   snapshot(): Promise<EnvironmentSnapshot>;

@@ -22,6 +22,12 @@ export function mergePermissions(layers: Array<ToolPermissions | undefined>): To
         execute: intersectBool(merged.terminal?.execute, layer.terminal.execute),
         allowCommands: intersectList(merged.terminal?.allowCommands, layer.terminal.allowCommands),
         denyCommands: unionList(merged.terminal?.denyCommands, layer.terminal.denyCommands),
+        // An explicit `false` in any layer narrows; a layer with no opinion
+        // does not silently open the capability up (spec §21).
+        allowUnisolated: intersectBool(
+          merged.terminal?.allowUnisolated,
+          layer.terminal.allowUnisolated,
+        ),
       };
     }
     if (layer.network) {
@@ -83,6 +89,10 @@ export function restrictPermissions(
       execute: grantBool(g.terminal?.execute, r.terminal?.execute),
       allowCommands: narrowList(g.terminal?.allowCommands, r.terminal?.allowCommands),
       denyCommands: unionList(g.terminal?.denyCommands, r.terminal?.denyCommands),
+      // Whether an isolation-requiring tool may run unsandboxed is the
+      // operator's decision, so it comes from the granted side. A tool can
+      // refuse it (`false`) but can never grant it to itself.
+      allowUnisolated: grantBool(g.terminal?.allowUnisolated, r.terminal?.allowUnisolated),
     };
   }
   if (g.network ?? r.network) {

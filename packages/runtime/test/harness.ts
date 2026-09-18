@@ -32,7 +32,10 @@ export const DEFAULT_TOOLS = [
 
 export const DEFAULT_PERMISSIONS: ToolPermissions = {
   filesystem: { read: true, write: true, delete: false },
-  terminal: { execute: true },
+  // The harness runs the local (host-process) environment, so it has to opt in
+  // to isolation-requiring tools out loud. A test that wants the default-deny
+  // behaviour overrides these permissions (spec §15).
+  terminal: { execute: true, allowUnisolated: true },
   network: { enabled: false },
   git: { read: true, commit: false, push: false },
   database: { read: false, write: false },
