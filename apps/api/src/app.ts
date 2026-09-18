@@ -6,12 +6,14 @@ import type { AgentOSStore } from '@kazi-ai/agentos-persistence';
 import { ApiKeyAuthenticator, localPrincipal } from './auth.js';
 import { AgentCatalog } from './catalog.js';
 import { InProcessDispatcher, type RunDispatcher } from './dispatcher.js';
+import { WebhookDispatcher } from './webhooks.js';
 import { errorBody, toApiError } from './errors.js';
 import { registerApprovalRoutes } from './routes/approvals.js';
 import { registerCatalogRoutes } from './routes/catalog.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { registerIdentityRoutes } from './routes/identity.js';
 import { registerRunRoutes } from './routes/runs.js';
+import { registerWebhookRoutes } from './routes/webhooks.js';
 import { registerStreamRoutes } from './routes/stream.js';
 import type { ApiContext, ApiOptions } from './types.js';
 
@@ -76,6 +78,7 @@ export async function buildApi(options: ApiOptions = {}): Promise<ApiHandle> {
   registerCatalogRoutes(app);
   registerIdentityRoutes(app);
   registerStreamRoutes(app);
+  registerWebhookRoutes(app);
 
   return {
     app,
@@ -141,6 +144,28 @@ export async function createApiContext(options: ApiOptions = {}): Promise<ApiCon
 
   const implicit = localPrincipal(organizationId, projectId);
 
+  // Webhooks follow the runtime's own event bus, so a delivery happens exactly
+  // once per event in this process and is recorded durably either way.
+  const webhooksEnabled = options.webhooks?.enabled ?? readEnv('KZ_WEBHOOKS') !== 'off';
+  const webhooks = webhooksEnabled
+    ? new WebhookDispatcher({
+        store: os.store,
+        bus: os.runtime.bus,
+        ...(options.logger ? { logger: options.logger } : {}),
+        ...(options.webhooks?.maxAttempts === undefined
+          ? {}
+          : { maxAttempts: options.webhooks.maxAttempts }),
+        ...(options.webhooks?.timeoutMs === undefined
+          ? {}
+          : { timeoutMs: options.webhooks.timeoutMs }),
+        ...(options.webhooks?.backoffMs === undefined
+          ? {}
+          : { backoffMs: options.webhooks.backoffMs }),
+        ...(options.webhooks?.fetchImpl ? { fetchImpl: options.webhooks.fetchImpl } : {}),
+      })
+    : undefined;
+  webhooks?.start();
+
   const context: ApiContext = {
     os,
     store: os.store as AgentOSStore,
@@ -150,10 +175,12 @@ export async function createApiContext(options: ApiOptions = {}): Promise<ApiCon
     projectId,
     options,
     auth,
+    ...(webhooks ? { webhooks } : {}),
     ...(bootstrap.key ? { bootstrap: { created: bootstrap.created, key: bootstrap.key } } : {}),
     now: () => Date.now(),
     principal: (request) => (authRequired ? auth.authenticate(request) : Promise.resolve(implicit)),
     close: async () => {
+      await webhooks?.close();
       await dispatcher.close?.();
       if (ownsOs) await os.close();
     },

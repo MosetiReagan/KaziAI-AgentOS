@@ -5,6 +5,7 @@ import type { AgentOS } from '@kazi-ai/agentos';
 import type { ApiKeyAuthenticator } from './auth.js';
 import type { AgentCatalog } from './catalog.js';
 import type { RunDispatcher } from './dispatcher.js';
+import type { WebhookDispatcher } from './webhooks.js';
 
 /** Role ordering used for authorization (spec §64). */
 export const ROLE_RANK: Record<Principal['role'], number> = {
@@ -27,6 +28,19 @@ export interface AuthOptions {
   bootstrap?: boolean;
 }
 
+export interface WebhookOptions {
+  /** Deliver events to subscriptions (default true). */
+  enabled?: boolean;
+  /** Attempts per delivery before it is recorded as failed. */
+  maxAttempts?: number;
+  /** Per-attempt timeout in milliseconds. */
+  timeoutMs?: number;
+  /** Base delay for exponential backoff between attempts. */
+  backoffMs?: number;
+  /** Injectable transport, used by tests. */
+  fetchImpl?: typeof fetch;
+}
+
 export interface ApiOptions {
   /** Use an existing AgentOS instead of building one from these options. */
   os?: AgentOS;
@@ -43,6 +57,7 @@ export interface ApiOptions {
   /** Replace the execution dispatcher (the worker app supplies a queue-backed one). */
   dispatcher?: RunDispatcher;
   auth?: AuthOptions;
+  webhooks?: WebhookOptions;
   cors?: { origins?: string[] };
   /** Secrets resolved for tools, MCP and webhook signing. */
   secrets?: SecretProvider;
@@ -67,6 +82,8 @@ export interface ApiContext {
   readonly auth: ApiKeyAuthenticator;
   /** The plaintext bootstrap key, present only when one was just created. */
   readonly bootstrap?: { created: boolean; key?: string };
+  /** Signed delivery of run events to subscribed endpoints (spec §98). */
+  readonly webhooks?: WebhookDispatcher;
   now(): number;
   /** Resolve the caller. Never trusts a header it has not verified. */
   principal(request: FastifyRequest): Promise<Principal>;
