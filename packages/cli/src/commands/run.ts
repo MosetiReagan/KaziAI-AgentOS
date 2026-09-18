@@ -99,10 +99,13 @@ export async function describeTimeline(os: AgentOS, runId: string): Promise<stri
         text: `Approval requested: ${String(event.data['toolId'] ?? 'action')}`,
       });
     } else if (event.type === 'recovery.started') {
+      // `recovery.started` carries the *kind* of failure being handled; the
+      // strategy only exists once the decision has been made.
+      const tool = event.data['toolId'];
       entries.push({
         rank: order.recovery,
         at: event.at,
-        text: `Recovery (${String(event.data['strategy'])})`,
+        text: `Recovery (${String(event.data['kind'])}${tool === undefined ? '' : ` on ${String(tool)}`})`,
       });
     } else if (event.type === 'checkpoint.created') {
       entries.push({

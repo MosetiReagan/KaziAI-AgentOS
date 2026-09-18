@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { startStubProvider, type StubProvider } from '../../../tests/helpers/stub-provider.js';
 import { main } from '../src/cli.js';
+import { describeTimeline } from '../src/commands/run.js';
 
 let cwd: string;
 let stub: StubProvider | undefined;
@@ -51,6 +52,30 @@ providers:
     'utf8',
   );
 }
+
+describe('the operator timeline', () => {
+  it('names the failure a recovery is handling', async () => {
+    const os = {
+      store: {
+        events: {
+          list: async () => [
+            { type: 'plan.created', at: 1, data: { steps: 2 } },
+            { type: 'recovery.started', at: 2, data: { kind: 'tool_failure', toolId: 'terminal.exec' } },
+            { type: 'checkpoint.created', at: 3, data: { sequence: 1 } },
+          ],
+        },
+        invocations: { list: async () => [{ toolId: 'filesystem.read', at: 4 }] },
+      },
+    } as unknown as Parameters<typeof describeTimeline>[0];
+
+    expect(await describeTimeline(os, 'run_1')).toEqual([
+      '[01] Planning',
+      '[02] filesystem.read',
+      '[03] Recovery (tool_failure on terminal.exec)',
+      '[04] Checkpoint #1',
+    ]);
+  });
+});
 
 describe('kazi-agent', () => {
   it('scaffolds a project with init', async () => {
