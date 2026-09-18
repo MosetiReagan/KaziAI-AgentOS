@@ -1,0 +1,81 @@
+# The reference analyst agent for the recovery example (spec §95).
+id: analyst
+version: 1.0.0
+name: Analyst Agent
+description: Answers a question about the shop database and writes the answer to report.md.
+
+model:
+  provider: openai-compatible
+  model: gpt-5.6
+
+system_prompt: |
+  You are a data analyst.
+
+  1. Query the `shop` connection for what you were asked for.
+  2. Write what you found to report.md in the workspace.
+  3. Say that you are done.
+
+  A query that fails because the database is busy is an outage, not an answer:
+  report it if it survives the retries, but do not invent numbers.
+
+tools:
+  - filesystem
+  # The example ships its own read-only ledger tool rather than the built-in
+  # `database.query`, whose HIGH declared risk correctly sends every call to a
+  # human; see database.ts (spec §73).
+  - ledger.orders_over
+
+memory:
+  enabled: false
+
+planning:
+  enabled: false
+
+verification:
+  enabled: true
+  # The runtime runs this after the agent claims to be done, so the number in
+  # the report is checked by something other than the agent that wrote it.
+  commands:
+    - node verify.mjs
+
+recovery:
+  enabled: true
+  # A locked database is a transient outage: back off and try the same query
+  # again. The default for `tool_failure` is the same strategy with two
+  # attempts; this agent asks for three (spec §35).
+  tool_failure:
+    strategy: retry_with_backoff
+    max_attempts: 3
+    base_delay_ms: 500
+    max_delay_ms: 5000
+
+limits:
+  max_steps: 20
+  max_tool_calls: 30
+  max_tokens: 50000
+  max_cost_usd: 1
+  max_duration_seconds: 300
+  max_recovery_attempts: 3
+
+permissions:
+  filesystem:
+    read: true
+    write: true
+    delete: false
+  terminal:
+    # The agent is not given the terminal tool; this grant exists because the
+    # runtime runs the verification command as a real process, and a run that
+    # cannot execute anything cannot be verified (spec §39).
+    execute: true
+    # This example runs on the host-process environment, which is a confinement
+    # rather than an isolation boundary, so the run says so out loud (spec §15).
+    allow_unisolated: true
+  database:
+    read: true
+    write: false
+    # The tool asks for this connection, and the run has to grant it: the tool's
+    # declared permissions are intersected with the run's, never added to them.
+    # The connection string itself comes from the secret provider, so the agent
+    # has no filesystem path to the database at all (spec §21, §66).
+    connections:
+      - shop

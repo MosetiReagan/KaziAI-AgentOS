@@ -1,0 +1,36 @@
+{
+  "note": [
+    "A recorded decision script for the deterministic provider (spec \u00a787).",
+    "",
+    "There is no turn for the retry. The runtime does not ask the model again to",
+    "recover from a failed tool call: `retry_with_backoff` re-executes the same",
+    "action in the executor, and the model only sees the outcome (spec \u00a734-35).",
+    "That is why turn 1 can talk about the total as if it had always been there."
+  ],
+  "turns": [
+    {
+      "text": "Asking the shop database for orders over 10000 cents.",
+      "toolCalls": [
+        {
+          "name": "ledger.orders_over",
+          "arguments": { "threshold_cents": 10000 }
+        }
+      ]
+    },
+    {
+      "text": "Recording the result in report.md.",
+      "toolCalls": [
+        {
+          "name": "filesystem.write",
+          "arguments": {
+            "path": "report.md",
+            "content": "# Orders over 10000 cents\n\n- Orders: 4\n- Total: 85000 cents\n"
+          }
+        }
+      ]
+    },
+    {
+      "text": "The report is written and the total came from the database."
+    }
+  ]
+}
