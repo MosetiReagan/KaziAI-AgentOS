@@ -22,6 +22,8 @@ export interface RunCommandOptions {
   projectId: string;
   limits?: RunLimits;
   permissions?: ToolPermissions;
+  /** Host directory copied into the run's workspace before it starts. */
+  workspace?: string;
   /** Print the timeline as the run progresses. */
   live?: boolean;
   labels?: Record<string, string>;
@@ -57,6 +59,9 @@ export async function executeRun(
     ...(options.limits ? { limits: options.limits } : {}),
     ...(options.permissions ? { permissions: options.permissions } : {}),
     ...(options.labels ? { labels: options.labels } : {}),
+    ...(options.workspace
+      ? { workspace: { copyFrom: options.workspace, ignore: ['node_modules', '.git', 'dist'] } }
+      : {}),
   });
   await agent.start(run.id);
   const [result, timeline, finished] = await Promise.all([

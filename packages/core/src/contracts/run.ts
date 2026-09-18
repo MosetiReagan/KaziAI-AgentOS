@@ -68,6 +68,21 @@ export interface AgentRunInput {
   /** Optional override for the provider chain used by this run. */
   providers?: { primary: ModelRef; fallback?: ModelRef[] };
   labels?: Record<string, string>;
+  /**
+   * What the run's workspace starts with (spec §70). A coding agent needs the
+   * repository in front of it, and a caller that could not put it there would
+   * have to reach around the runtime's own boundary to do it.
+   */
+  workspace?: WorkspaceSeedInput;
+}
+
+export interface WorkspaceSeedInput {
+  /** Files written into the workspace before the run starts. */
+  files?: Record<string, string>;
+  /** A host directory copied into the workspace; resolved by the caller. */
+  copyFrom?: string;
+  /** Path segments skipped while copying, e.g. `node_modules`. */
+  ignore?: string[];
 }
 
 export interface RunConfigSnapshot {

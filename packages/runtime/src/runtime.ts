@@ -391,6 +391,19 @@ export class AgentOSRuntime implements AgentRuntime {
     const limits = { ...(this.options.defaultLimits ?? {}), ...(config.limits ?? {}), ...(input.limits ?? {}) };
     const usage = emptyUsage();
     const workspace = this.workspace.create({ runId, organizationId: input.organizationId });
+    // The workspace is seeded before the run row exists: a caller that pointed a
+    // run at a directory it cannot read gets an error, not a run that is
+    // already executing against an empty workspace (spec §70, §94).
+    let seededFiles = 0;
+    if (input.workspace?.files) {
+      this.workspace.seed(runId, input.workspace.files);
+      seededFiles += Object.keys(input.workspace.files).length;
+    }
+    if (input.workspace?.copyFrom) {
+      seededFiles += this.workspace.seedFrom(runId, input.workspace.copyFrom, {
+        ...(input.workspace.ignore ? { ignore: input.workspace.ignore } : {}),
+      });
+    }
     const run: AgentRun = {
       id: runId,
       goal: input.goal,
@@ -433,7 +446,7 @@ export class AgentOSRuntime implements AgentRuntime {
       organizationId: run.organizationId,
       projectId: run.projectId,
       traceId: run.traceId,
-      data: { path: workspace.path },
+      data: { path: workspace.path, ...(seededFiles > 0 ? { seededFiles } : {}) },
     });
     return run;
   }

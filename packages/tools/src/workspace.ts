@@ -1,6 +1,6 @@
-import { mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
-import { EnvironmentError, type Logger } from '@kazi-ai/agentos-core';
+import { cpSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync, type Dirent } from 'node:fs';
+import { join, resolve, sep } from 'node:path';
+import { EnvironmentError, ValidationError, type Logger } from '@kazi-ai/agentos-core';
 
 export type WorkspaceStatus = 'CREATE' | 'ACTIVE' | 'CHECKPOINTED' | 'CLEANUP' | 'DELETED';
 
@@ -117,15 +117,66 @@ export class WorkspaceManager {
     return [...this.handles.values()];
   }
 
-  /** Seed a workspace with files, used by examples and tests. */
+  /**
+   * Seed a workspace with files before the run starts (spec §70).
+   *
+   * A seed is caller-supplied, not agent-supplied, but a relative path that
+   * escapes the workspace is still refused: the boundary has to hold no matter
+   * who is holding the other end.
+   */
   seed(runId: string, files: Record<string, string>): void {
     const handle = this.require(runId);
     for (const [name, contents] of Object.entries(files)) {
-      const target = join(handle.path, name);
+      const target = this.confine(handle.path, name);
       mkdirSync(resolve(target, '..'), { recursive: true });
       writeFileSync(target, contents, 'utf8');
     }
   }
+
+  /**
+   * Copy a host directory into the workspace, which is how a run starts on an
+   * existing repository (spec §94). The caller names the directory and is
+   * trusted to; `ignore` skips path segments such as `node_modules`.
+   */
+  seedFrom(runId: string, sourceDir: string, options: { ignore?: string[] } = {}): number {
+    const handle = this.require(runId);
+    const source = resolve(sourceDir);
+    if (!statSync(source).isDirectory()) {
+      throw new ValidationError(`Workspace seed source is not a directory: ${source}`, { source });
+    }
+    const ignore = new Set(options.ignore ?? []);
+    cpSync(source, handle.path, {
+      recursive: true,
+      filter: (entry) => !entry.split(sep).some((segment) => ignore.has(segment)),
+    });
+    return countFiles(handle.path);
+  }
+
+  /** Resolve a path inside the workspace, refusing anything that escapes it. */
+  private confine(root: string, name: string): string {
+    const target = resolve(root, name);
+    if (target !== root && !target.startsWith(`${root}${sep}`)) {
+      throw new ValidationError(`Workspace seed path escapes the workspace: ${name}`, { path: name });
+    }
+    return target;
+  }
+}
+
+function readdirSyncSafe(dir: string): Dirent[] {
+  try {
+    return readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+}
+
+function countFiles(dir: string): number {
+  let total = 0;
+  for (const entry of readdirSyncSafe(dir)) {
+    if (entry.isDirectory()) total += countFiles(join(dir, entry.name));
+    else total += 1;
+  }
+  return total;
 }
 
 function sanitize(value: string): string {

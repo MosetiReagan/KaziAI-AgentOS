@@ -13,6 +13,7 @@ import {
   type ParsedArgs,
 } from './args.js';
 import { Output } from './output.js';
+import { resolve } from 'node:path';
 import { buildContext, tenantScope, type CliContext } from './context.js';
 import { initProject } from './commands/init.js';
 import {
@@ -40,6 +41,7 @@ Usage: kazi-agent <command> [options]
 
 Run an agent:
   run <agent> --goal "<text>"    Execute goal with the named agent
+      [--workspace <dir>]        Seed the run's workspace from a directory
   runs                           List runs
   inspect <run>                  Show a run's state, trace and timeline
   logs <run> [--follow]          Show the run's event stream
@@ -123,12 +125,16 @@ async function dispatch(args: ParsedArgs, context: CliContext, output: Output): 
         throw new ValidationError('A run needs a goal: `kazi-agent run <agent> --goal "..."`');
       }
       const limits = limitsFromFlags(args);
+      const workspace = flagString(args, 'workspace');
       const { run, result, timeline } = await executeRun(context, {
         agent,
         goal,
         cwd: context.cwd,
         ...scope,
         ...(limits ? { limits } : {}),
+        // `--workspace <dir>` puts an existing repository in front of the
+        // agent instead of starting it on an empty directory (spec §70, §94).
+        ...(workspace ? { workspace: resolve(context.cwd, workspace) } : {}),
       });
       if (output.json) {
         output.data({ run: run as unknown as JsonObject, result: result as unknown as JsonObject });

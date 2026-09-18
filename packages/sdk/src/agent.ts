@@ -11,6 +11,7 @@ import {
   type RunLimits,
   type ToolPermissions,
   type Trace,
+  type WorkspaceSeedInput,
 } from '@kazi-ai/agentos-core';
 import {
   expandToolFamilies,
@@ -81,6 +82,8 @@ export interface AgentRunRequest {
   metadata?: JsonObject;
   labels?: Record<string, string>;
   parentRunId?: string;
+  /** What the run's workspace starts with, e.g. the repository to work on (spec §70). */
+  workspace?: WorkspaceSeedInput;
 }
 
 export const DEFAULT_AGENT_TOOLS = ['filesystem', 'terminal'];
@@ -270,6 +273,7 @@ export class Agent {
       metadata: { ...(request.metadata ?? {}), agentVersion: this.version },
       labels: request.labels ?? {},
       ...(request.parentRunId ? { parentRunId: request.parentRunId } : {}),
+      ...(request.workspace ? { workspace: request.workspace } : {}),
     };
   }
 }

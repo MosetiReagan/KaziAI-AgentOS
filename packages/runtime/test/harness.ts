@@ -137,6 +137,7 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
         permissions: overrides.permissions ?? cfg.permissions,
         metadata: overrides.metadata ?? {},
         ...(overrides.parentRunId ? { parentRunId: overrides.parentRunId } : {}),
+        ...(overrides.workspace ? { workspace: overrides.workspace } : {}),
       };
     },
     async cleanup() {
