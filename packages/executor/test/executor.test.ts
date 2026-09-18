@@ -456,6 +456,31 @@ describe('Executor', () => {
     expect(attempts).toBe(1);
   });
 
+  it('normalises tool output that is not JSON before journaling it', async () => {
+    const sloppy = echoTool('test.sloppy', {
+      risk: 'LOW' as const,
+      async execute(_input, _context) {
+        // Exactly what a buggy plugin or a hostile MCP server can return.
+        return {
+          success: true,
+          output: { total: 7n, nested: { when: new Date(0) }, dropped: () => 1 } as unknown as JsonValue,
+        };
+      },
+    });
+    const harness = await createHarness({ tools: [sloppy] });
+    const action = makeAction({ runId: harness.runId, toolId: 'test.sloppy' });
+
+    const outcome = await harness.executor.execute(harness.request([action]));
+    expect(outcome.succeeded).toBe(1);
+
+    const journal = await harness.store.actions.list(harness.runId);
+    const committed = journal.find((entry) => entry.status === 'succeeded');
+    // The journal is append-only JSONL: a value it cannot serialize would
+    // corrupt the very record that makes recovery possible.
+    expect(committed?.result).toEqual({ total: '7', nested: { when: '1970-01-01T00:00:00.000Z' }, dropped: null });
+    expect(() => JSON.stringify(committed)).not.toThrow();
+  });
+
   it('records intent before executing so a crash leaves evidence', async () => {
     const crashy = echoTool('test.crash', {
       risk: 'LOW' as const,

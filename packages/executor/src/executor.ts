@@ -8,6 +8,7 @@ import {
   mapConcurrent,
   restrictPermissions,
   toAgentError,
+  toJsonValue,
   truncateJson,
   type ActionJournal,
   type AgentAction,
@@ -417,7 +418,7 @@ export class Executor {
       if (request.signal?.aborted) throw toAgentError(request.signal.reason, 'operation.aborted');
       const context = this.options.createToolContext(fullRequest(request, action), tool, controller.signal);
       const toolContext: ToolContext = { ...context, permissions };
-      const result = await tool.execute(parsed.data, toolContext);
+      const result = normalizeToolResult(await tool.execute(parsed.data, toolContext));
       const durationMs = Date.now() - started;
       await this.commit(request.runId, action, result.success ? 'succeeded' : 'failed', result.output, undefined);
       await this.options.hooks?.onInvocation?.({ action, result, durationMs });
@@ -466,6 +467,19 @@ export class Executor {
       finishedAt: Date.now(),
     });
   }
+}
+
+/**
+ * Tool output is untrusted (spec §105) and need not even be JSON: a plugin, an
+ * HTTP tool or an MCP server can hand back a `BigInt`, a function or a cycle,
+ * and a tool that does so would otherwise corrupt the journal it is written to
+ * and surface as an opaque serialization `TypeError` instead of a classified
+ * failure (spec §69, §104). Normalise once, here, so the journal, the
+ * observation and the model context all see a plain JSON value.
+ */
+function normalizeToolResult(result: ToolResult): ToolResult {
+  const output = toJsonValue(result.output);
+  return output === result.output ? result : { ...result, output };
 }
 
 /** Whether repeating an action that already failed cannot double-apply. */
