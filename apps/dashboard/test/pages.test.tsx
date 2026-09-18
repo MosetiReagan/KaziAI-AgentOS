@@ -15,9 +15,14 @@ import { RunsPage } from '../src/pages/Runs.js';
  * under test rather than a live server.
  */
 
-function run(overrides: Partial<AgentRun> = {}): AgentRun {
+/**
+ * `AgentRun['id']` is a branded `RunId` on the wire; a test fixture wants to
+ * write `'run_live'`, so the helper takes plain strings and brands them on the
+ * way out rather than making every call site cast.
+ */
+function run(overrides: Partial<Omit<AgentRun, 'id'>> & { id?: string } = {}): AgentRun {
   return {
-    id: 'run_1',
+    id: 'run_1' as AgentRun['id'],
     goal: 'Fix the failing tests in this repository.',
     agentId: 'developer',
     organizationId: 'org_1',
