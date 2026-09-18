@@ -300,8 +300,10 @@ Known limits, stated plainly:
   same interface, not a durability gap.
 - The embedded store is durable and crash-safe but single-writer; use Postgres
   for a multi-worker deployment.
-- `postgres`/`redis` integration tests are skipped where those services are not
-  available, and are run in CI with service containers.
+- The Prisma/Postgres store implements the same `AgentOSStore` contract as the
+  embedded one, but nothing in this repository runs it against a live Postgres:
+  CI validates the image and the compose configuration instead. Treat the
+  embedded store as the tested default and Postgres as the deployment target.
 
 ## License
 
