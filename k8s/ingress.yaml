@@ -1,0 +1,25 @@
+# One hostname in front of the gateway: the API, the dashboard and the SSE
+# streams share an origin, so no CORS and no second TLS certificate (spec §106).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kazi-agentos
+  labels:
+    app.kubernetes.io/part-of: kazi-agentos
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-buffering: 'off'
+    nginx.ingress.kubernetes.io/proxy-read-timeout: '3600'
+    nginx.ingress.kubernetes.io/proxy-send-timeout: '3600'
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: agentos.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: gateway
+                port:
+                  number: 80

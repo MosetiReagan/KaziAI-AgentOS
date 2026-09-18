@@ -1,0 +1,15 @@
+# Run workspaces are shared between the API and the worker, so this must be a
+# ReadWriteMany class (NFS, CephFS, EFS, Azure Files, Longhorn RWX, ...). On a
+# single-node cluster `standard` (ReadWriteOnce) is enough because every pod
+# lands on the same node.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kazi-agentos-data
+  labels:
+    app.kubernetes.io/part-of: kazi-agentos
+spec:
+  accessModes: ['ReadWriteMany']
+  resources:
+    requests:
+      storage: 50Gi

@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  labels:
+    app.kubernetes.io/name: worker
+    app.kubernetes.io/part-of: kazi-agentos
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: worker
+    spec:
+      # Graceful shutdown (spec §84): the worker stops claiming, lets in-flight
+      # runs checkpoint, and only then exits.
+      terminationGracePeriodSeconds: 120
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: worker
+          image: kazi-ai-agentos:latest
+          envFrom:
+            - configMapRef:
+                name: kazi-agentos-config
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: kazi-agentos-secrets
+                  key: DATABASE_URL
+            - name: KZ_WORKER_HOST
+              value: 0.0.0.0
+            - name: KZ_WORKER_PORT
+              value: '4100'
+            - name: KZ_WORKER_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          ports:
+            - containerPort: 4100
+              name: health
+          readinessProbe:
+            httpGet: { path: /ready, port: health }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 12
+          livenessProbe:
+            httpGet: { path: /health, port: health }
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 500m, memory: 1Gi }
+            limits: { cpu: '4', memory: 4Gi }
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/kazi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: kazi-agentos-data

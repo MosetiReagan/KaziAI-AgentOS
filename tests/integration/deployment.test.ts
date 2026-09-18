@@ -114,3 +114,55 @@ describe('docker deployment (spec §106)', () => {
     expect(env['KZ_GATEWAY_PORT']).toBe('8080');
   });
 });
+
+describe('kubernetes deployment (spec §107)', () => {
+  const kustomization = parseYaml(read('k8s/kustomization.yaml')) as { resources: string[] };
+
+  it('references only manifests that exist', () => {
+    for (const resource of kustomization.resources) {
+      expect(existsSync(join(root, 'k8s', resource)), resource).toBe(true);
+    }
+  });
+
+  it('never ships a real secret', () => {
+    expect(kustomization.resources).not.toContain('secret.yaml');
+    expect(existsSync(join(root, 'k8s/secret.example.yaml'))).toBe(true);
+    const secrets = read('k8s/secret.example.yaml');
+    expect(secrets).not.toMatch(/kz_live_[a-z0-9]+\.[A-Za-z0-9]{20,}/);
+  });
+
+  it('gives every stateless service a grace period long enough to checkpoint', () => {
+    for (const file of ['k8s/api.yaml', 'k8s/worker.yaml', 'k8s/gateway.yaml']) {
+      const match = /terminationGracePeriodSeconds:\s*(\d+)/.exec(read(file));
+      expect(match, `${file} has no terminationGracePeriodSeconds`).not.toBeNull();
+      expect(Number(match?.[1])).toBeGreaterThanOrEqual(45);
+    }
+  });
+
+  it('mounts the same run-workspace claim into the API and the worker', () => {
+    for (const file of ['k8s/api.yaml', 'k8s/worker.yaml']) {
+      expect(read(file)).toContain('claimName: kazi-agentos-data');
+    }
+    expect(read('k8s/pvc.yaml')).toContain('name: kazi-agentos-data');
+  });
+
+  it('probes every workload with a path its server actually serves', () => {
+    const served = new Set(['/health', '/ready', '/healthz', '/readyz', '/version', '/openapi.json']);
+    for (const file of readdirSync(join(root, 'k8s'))) {
+      if (!file.endsWith('.yaml')) continue;
+      for (const match of read(`k8s/${file}`).matchAll(/httpGet:\s*\{\s*path:\s*(\/[^\s,}]*)/g)) {
+        expect(served.has(match[1] as string), `${file} probes unknown path ${match[1]}`).toBe(true);
+      }
+    }
+  });
+
+  it('never lets a workload start before the schema step finished', () => {
+    // The migrate Job is applied with the rest, so readiness — not ordering —
+    // is what keeps an unmigrated database from serving traffic.
+    expect(read('k8s/migrate-job.yaml')).toContain('kind: Job');
+    for (const file of ['k8s/api.yaml', 'k8s/worker.yaml']) {
+      expect(read(file)).toMatch(/readinessProbe:/);
+      expect(read(file)).toMatch(/startupProbe:|initialDelaySeconds:/);
+    }
+  });
+});

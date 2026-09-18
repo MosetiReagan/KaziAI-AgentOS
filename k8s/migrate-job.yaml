@@ -1,0 +1,46 @@
+# The schema step runs as a Job and every workload waits for it, so no pod can
+# start against a database whose tables do not exist yet (spec §106).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kazi-agentos-migrate
+  labels:
+    app.kubernetes.io/name: migrate
+    app.kubernetes.io/part-of: kazi-agentos
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: migrate
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+        - name: migrate
+          image: kazi-ai-agentos:latest
+          command:
+            - pnpm
+            - --filter
+            - '@kazi-ai/agentos-persistence'
+            - exec
+            - prisma
+            - db
+            - push
+            - --schema
+            - prisma/schema.prisma
+            - --skip-generate
+          envFrom:
+            - configMapRef:
+                name: kazi-agentos-config
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: kazi-agentos-secrets
+                  key: DATABASE_URL
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: '1', memory: 1Gi }

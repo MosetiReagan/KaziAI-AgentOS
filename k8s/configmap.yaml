@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kazi-agentos-config
+  labels:
+    app.kubernetes.io/part-of: kazi-agentos
+data:
+  KZ_STORAGE_DRIVER: postgres
+  KZ_QUEUE: bullmq
+  KZ_DATA_DIR: /var/lib/kazi
+  KZ_AGENT_DIRS: /app/agents
+  KZ_ORGANIZATION: org_local
+  KZ_PROJECT: prj_default
+  # Every pod confines commands to its own container. Switch to `docker` only
+  # if you mount a container runtime into the worker; see docs/deployment.md.
+  KZ_ENVIRONMENT: local
+  KZ_NETWORK_ENABLED: 'false'
+  KZ_WORKER_CONCURRENCY: '4'
+  KZ_GATEWAY_MAX_IN_FLIGHT: '512'
+  REDIS_URL: redis://redis:6379
