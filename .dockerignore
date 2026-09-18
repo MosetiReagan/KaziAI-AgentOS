@@ -1,0 +1,31 @@
+# Never ship a host build or host state into an image: the image builds its own.
+node_modules
+**/node_modules
+dist
+**/dist
+coverage
+**/coverage
+*.tsbuildinfo
+**/*.tsbuildinfo
+
+# Repository and local runtime state
+.git
+.gitignore
+.github
+.kazi
+.tmp
+artifacts
+logs
+
+# Editor and OS noise
+.DS_Store
+.idea
+.vscode
+*.swp
+
+# Secrets must arrive as environment variables, never as build context
+.env
+.env.*
+!.env.example
+*.pem
+*.key

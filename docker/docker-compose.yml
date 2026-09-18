@@ -1,0 +1,172 @@
+# KaziAI AgentOS — a complete, self-contained runtime stack.
+#
+#   cd docker && cp .env.example .env && docker compose up -d
+#
+# Everything the API, the worker, the dashboard and the gateway need is here:
+# Postgres for durable state, Redis for the BullMQ queue, and one shared data
+# volume so a run created by the API can be executed by the worker on the same
+# workspace. Services start in dependency order and every one of them is probed
+# before the next is allowed to come up (spec §106).
+name: kazi-agentos
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-kazi}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kazi}
+      POSTGRES_DB: ${POSTGRES_DB:-kazi}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-kazi} -d ${POSTGRES_DB:-kazi}']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    ports:
+      - '${KZ_POSTGRES_PORT:-5432}:5432'
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes', '--save', '60', '1']
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    ports:
+      - '${KZ_REDIS_PORT:-6379}:6379'
+
+  # One-shot schema step. The API and the worker wait for it to *complete*, so
+  # neither can start against a database whose tables do not exist yet.
+  # `prisma db push` is idempotent, so re-running it on every deploy is safe.
+  migrate:
+    build:
+      context: ..
+      dockerfile: docker/node.Dockerfile
+      target: api
+    # `--skip-generate` is deliberate: the client is generated at image build
+    # time, and the runtime user cannot write into /app/node_modules.
+    command:
+      [
+        'pnpm',
+        '--filter',
+        '@kazi-ai/agentos-persistence',
+        'exec',
+        'prisma',
+        'db',
+        'push',
+        '--schema',
+        'prisma/schema.prisma',
+        '--skip-generate',
+      ]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-kazi}:${POSTGRES_PASSWORD:-kazi}@postgres:5432/${POSTGRES_DB:-kazi}?schema=public
+      KZ_DATA_DIR: /var/lib/kazi
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
+
+  api:
+    build:
+      context: ..
+      dockerfile: docker/node.Dockerfile
+      target: api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-kazi}:${POSTGRES_PASSWORD:-kazi}@postgres:5432/${POSTGRES_DB:-kazi}?schema=public
+      REDIS_URL: redis://redis:6379
+      KZ_STORAGE_DRIVER: postgres
+      KZ_QUEUE: bullmq
+      KZ_DATA_DIR: /var/lib/kazi
+      KZ_AGENT_DIRS: /app/agents
+      KZ_ORGANIZATION: ${KZ_ORGANIZATION:-org_local}
+      KZ_PROJECT: ${KZ_PROJECT:-prj_default}
+      KZ_API_HOST: 0.0.0.0
+      KZ_API_PORT: '4000'
+      KZ_API_BOOTSTRAP_KEY: ${KZ_API_BOOTSTRAP_KEY:-}
+      # `local` confines commands to this container; `docker` gives every run a
+      # container of its own and needs the Docker socket — see docs/deployment.md.
+      KZ_ENVIRONMENT: ${KZ_ENVIRONMENT:-local}
+      KZ_NETWORK_ENABLED: ${KZ_NETWORK_ENABLED:-false}
+    volumes:
+      - kazi-data:/var/lib/kazi
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    ports:
+      - '${KZ_API_PORT:-4000}:4000'
+
+  worker:
+    build:
+      context: ..
+      dockerfile: docker/node.Dockerfile
+      target: worker
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-kazi}:${POSTGRES_PASSWORD:-kazi}@postgres:5432/${POSTGRES_DB:-kazi}?schema=public
+      REDIS_URL: redis://redis:6379
+      KZ_STORAGE_DRIVER: postgres
+      KZ_QUEUE: bullmq
+      KZ_DATA_DIR: /var/lib/kazi
+      KZ_AGENT_DIRS: /app/agents
+      KZ_ORGANIZATION: ${KZ_ORGANIZATION:-org_local}
+      KZ_PROJECT: ${KZ_PROJECT:-prj_default}
+      KZ_WORKER_HOST: 0.0.0.0
+      KZ_WORKER_PORT: '4100'
+      KZ_WORKER_CONCURRENCY: ${KZ_WORKER_CONCURRENCY:-2}
+      KZ_ENVIRONMENT: ${KZ_ENVIRONMENT:-local}
+      KZ_NETWORK_ENABLED: ${KZ_NETWORK_ENABLED:-false}
+    volumes:
+      # The same volume as the API: the execution environment writes the run's
+      # workspace here, and the worker has to see the same files.
+      - kazi-data:/var/lib/kazi
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    ports:
+      - '${KZ_WORKER_PORT:-4100}:4100'
+
+  dashboard:
+    build:
+      context: ..
+      dockerfile: docker/dashboard.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - api
+
+  gateway:
+    build:
+      context: ..
+      dockerfile: docker/node.Dockerfile
+      target: gateway
+    restart: unless-stopped
+    environment:
+      KZ_GATEWAY_HOST: 0.0.0.0
+      KZ_GATEWAY_PORT: '8080'
+      KZ_API_URL: http://api:4000
+      KZ_DASHBOARD_URL: http://dashboard:80
+      KZ_GATEWAY_MAX_IN_FLIGHT: ${KZ_GATEWAY_MAX_IN_FLIGHT:-256}
+      KZ_GATEWAY_CORS_ORIGIN: ${KZ_GATEWAY_CORS_ORIGIN:-}
+    depends_on:
+      api:
+        condition: service_healthy
+      dashboard:
+        condition: service_healthy
+    ports:
+      - '${KZ_GATEWAY_PORT:-8080}:8080'
+
+volumes:
+  postgres-data:
+  redis-data:
+  kazi-data:

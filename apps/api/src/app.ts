@@ -148,6 +148,21 @@ async function dispatcherFor(
   );
 }
 
+/**
+ * Where `*.yaml` / `*.json` agent definitions live. Deployment images set
+ * `KZ_AGENT_DIRS=/app/agents` so the volume holding run data does not have to
+ * also hold the shipped definitions (spec §77).
+ */
+function agentDirsFromEnv(readEnv: (name: string) => string | undefined): string[] | undefined {
+  const raw = readEnv('KZ_AGENT_DIRS');
+  if (raw === undefined) return undefined;
+  const dirs = raw
+    .split(/[,:]/)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+  return dirs.length > 0 ? dirs : undefined;
+}
+
 export async function createApiContext(options: ApiOptions = {}): Promise<ApiContext> {
   const readEnv = (name: string): string | undefined => options.env?.[name] ?? process.env[name];
   const organizationId =
@@ -179,7 +194,11 @@ export async function createApiContext(options: ApiOptions = {}): Promise<ApiCon
 
   const catalog = new AgentCatalog({
     os,
-    dirs: options.agentDirs ?? [options.dataDir ? `${options.dataDir}/agents` : 'agents'],
+    // `KZ_AGENT_DIRS` is a colon/comma separated list so a container can point
+    // at the definitions baked into the image while the data dir stays a volume.
+    dirs: options.agentDirs ?? agentDirsFromEnv(readEnv) ?? [
+      options.dataDir ? `${options.dataDir}/agents` : 'agents',
+    ],
   });
 
   const dispatcher: RunDispatcher =
