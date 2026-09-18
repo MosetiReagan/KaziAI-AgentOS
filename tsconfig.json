@@ -25,6 +25,7 @@
       "@kazi-ai/agentos-evaluation": ["packages/evaluation/src/index.ts"],
       "@kazi-ai/agentos-bench": ["packages/bench/src/index.ts"],
       "@kazi-ai/agentos-persistence": ["packages/persistence/src/index.ts"],
+      "@kazi-ai/agentos-cli": ["packages/cli/src/index.ts"],
       "@kazi-ai/agentos-worker": ["apps/worker/src/index.ts"],
       "@kazi-ai/agentos-gateway": ["apps/gateway/src/index.ts"]
     }
