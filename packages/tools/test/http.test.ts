@@ -29,6 +29,24 @@ describe('SSRF defenses', () => {
     await expect(assertPublicHost('localhost')).rejects.toMatchObject({ code: 'tool.invalid_input' });
     await expect(assertPublicHost('metadata.google.internal')).rejects.toMatchObject({ code: 'tool.invalid_input' });
   });
+
+  it('treats a bracketed IPv6 literal as an address, not a hostname', async () => {
+    // `URL.hostname` hands us `[::1]`, and `isIP('[::1]')` is 0. Previously the
+    // literal skipped the address check and went to DNS instead, which is both
+    // the wrong path and a confusing error.
+    let lookedUp = false;
+    await expect(
+      assertPublicHost('[::1]', async () => {
+        lookedUp = true;
+        return ['93.184.216.34'];
+      }),
+    ).rejects.toThrow(/blocked range/);
+    expect(lookedUp).toBe(false);
+
+    await expect(assertPublicHost('[fd00::1]')).rejects.toThrow(/blocked range/);
+    // A public IPv6 literal still gets through.
+    await expect(assertPublicHost('[2606:2800:220:1:248:1893:25c8:1946]')).resolves.toBeUndefined();
+  });
 });
 
 describe('http tool', () => {

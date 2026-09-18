@@ -228,7 +228,11 @@ export async function assertPublicHost(
   hostname: string,
   resolveHost?: (hostname: string) => Promise<string[]>,
 ): Promise<void> {
-  const lowered = hostname.toLowerCase();
+  // `URL.hostname` keeps the brackets on an IPv6 literal, and `isIP('[::1]')`
+  // is 0 — so without stripping them the literal skipped the address check
+  // entirely and fell through to DNS, which a loopback address never resolves
+  // through. Strip them before deciding what kind of host this is.
+  const lowered = hostname.toLowerCase().replace(/^\[|\]$/g, '');
   if (BLOCKED_HOSTNAMES.includes(lowered) || lowered.endsWith('.localhost') || lowered.endsWith('.internal')) {
     throw new ToolInputError('http.request', `Host ${hostname} is not permitted (internal name)`, { host: hostname });
   }
