@@ -1,0 +1,161 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+  # The suite must never reach a real provider, and it must never depend on a
+  # developer's machine having credentials.
+  KZ_API_AUTH: 'none'
+  KZ_PROVIDERS_FROM_ENV: 'false'
+
+jobs:
+  static:
+    name: lint and typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @kazi-ai/agentos-persistence prisma:generate
+      - run: pnpm lint
+      - run: pnpm typecheck
+
+  unit:
+    name: unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @kazi-ai/agentos-persistence prisma:generate
+      - run: pnpm test
+
+  integration:
+    name: integration tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @kazi-ai/agentos-persistence prisma:generate
+      - run: pnpm test:integration
+
+  e2e:
+    name: end-to-end tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @kazi-ai/agentos-persistence prisma:generate
+      - run: pnpm test:e2e
+
+  security:
+    name: security tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @kazi-ai/agentos-persistence prisma:generate
+      - run: pnpm test:security
+
+  chaos:
+    name: chaos tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @kazi-ai/agentos-persistence prisma:generate
+      - run: pnpm test:chaos
+
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @kazi-ai/agentos-persistence prisma:generate
+      - run: pnpm build
+      - run: node packages/cli/dist/bin.js doctor
+        continue-on-error: true
+
+  docker:
+    name: docker images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the API, worker and gateway image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/node.Dockerfile
+          target: api
+          push: false
+          cache-from: type=gha,scope=node
+          cache-to: type=gha,scope=node,mode=max
+      - name: Build the dashboard image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/dashboard.Dockerfile
+          push: false
+          cache-from: type=gha,scope=dashboard
+          cache-to: type=gha,scope=dashboard,mode=max
+      - name: Validate the compose file
+        run: docker compose -f docker/docker-compose.yml config --quiet
+
+  # A green tick should mean the whole thing works, not just the fast jobs.
+  required:
+    name: all checks
+    if: always()
+    needs: [static, unit, integration, e2e, security, chaos, build, docker]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any dependency failed
+        run: |
+          echo '${{ toJSON(needs) }}'
+          if [ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" = "true" ]; then
+            echo "One or more required jobs failed." >&2
+            exit 1
+          fi
