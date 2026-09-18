@@ -268,6 +268,32 @@ describe('DefaultRecoveryEngine', () => {
     expect(decision.terminal).toBe(true);
   });
 
+  it('lets the run override the deployment policy map', async () => {
+    const engine = new DefaultRecoveryEngine({
+      awaitBackoff: false,
+      // What an agent definition's `recovery:` block supplies at runtime.
+      policiesFor: (runId) =>
+        runId === 'run_custom' ? { tool_failure: { kind: 'tool_failure', strategy: 'skip_step', maxAttempts: 3 } } : undefined,
+    });
+    const failure = new AgentError({
+      code: 'tool.execution_failed',
+      message: 'the command exited non-zero',
+      category: 'tool',
+      retryable: false,
+      idempotency: 'idempotent',
+    });
+
+    const overridden = await engine.decide(contextFor(failure, { runId: 'run_custom' }));
+    expect(overridden.strategy).toBe('skip_step');
+
+    // Runs that did not ask for it still get the deployment default.
+    const standard = await engine.decide(contextFor(failure, { runId: 'run_default' }));
+    expect(standard.strategy).not.toBe('skip_step');
+
+    expect((await engine.policyForRun('tool_failure', 'run_custom')).strategy).toBe('skip_step');
+    expect((await engine.policyForRun('tool_timeout', 'run_custom')).strategy).toBe('retry_with_backoff');
+  });
+
   it('asks a human when authentication fails', async () => {
     const requests: string[] = [];
     const engine = new DefaultRecoveryEngine({

@@ -12,6 +12,7 @@ import {
   type Planner,
   type ToolPermissions,
 } from '@kazi-ai/agentos-core';
+import { parseAgentDefinition } from '@kazi-ai/agentos-agent';
 import type { AgentOSStore } from '@kazi-ai/agentos-persistence';
 import { createStore } from '@kazi-ai/agentos-persistence';
 import { createAgentOS, defineTool, type AgentOS } from '../src/index.js';
@@ -237,6 +238,52 @@ describe('Agent SDK', () => {
     await agent.cancel(run.id);
 
     expect((await agent.getRun(run.id)).status).toBe('CANCELLED');
+  });
+});
+
+describe('recovery policies an agent declares', () => {
+  it('uses the definition\'s policy map for that run', async () => {
+    const brittle = defineTool({
+      id: 'brittle.write',
+      description: 'Always fails, as an unreachable dependency would',
+      input: z.object({ path: z.string() }),
+      risk: 'LOW',
+      idempotency: 'idempotent',
+      async execute() {
+        throw new Error('dependency is unreachable');
+      },
+    });
+    const definition = parseAgentDefinition({
+      id: 'policy-agent',
+      version: '1.0.0',
+      model: { provider: 'fake', model: 'fake-1' },
+      system_prompt: 'You are a test agent.',
+      tools: ['brittle.write'],
+      permissions: {},
+      recovery: {
+        enabled: true,
+        // The default for tool_failure is retry_with_backoff; this agent would
+        // rather the runtime stop hammering the dependency and carry on.
+        tool_failure: { strategy: 'skip_step', max_attempts: 3 },
+      },
+    });
+
+    os = await agentOSFor(
+      [
+        planTurn('write something', 'write it'),
+        { text: 'writing', toolCalls: [{ name: 'brittle.write', arguments: { path: 'x.txt' } }] },
+        { text: 'the dependency is down, so the file could not be written' },
+      ],
+      { tools: [brittle], planning: false, verification: false },
+    );
+    const agent = os.agent(definition);
+    await agent.register();
+    const result = await agent.run({ goal: 'Write x.txt' });
+
+    const recoveries = await os.store.recoveries.list(result.runId);
+    expect(recoveries.length).toBeGreaterThanOrEqual(1);
+    // The declaration in the definition, not the deployment default, decided.
+    expect(recoveries[0]?.strategy).toBe('skip_step');
   });
 });
 

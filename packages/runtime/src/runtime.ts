@@ -239,6 +239,16 @@ export class AgentOSRuntime implements AgentRuntime {
         },
         failover: async ({ runId }) => this.nextProviderFor(runId),
         switchProvider: async ({ to }) => to,
+        // The agent definition's `recovery:` block is a promise to the author,
+        // so it is resolved per run rather than ignored in favour of the
+        // deployment defaults (spec §6, §35).
+        policiesFor: async (runId) => {
+          const run = await this.store.runs.get(runId);
+          if (!run) return undefined;
+          const definition = await this.definitionFor(run);
+          const policies = definition?.recovery.policies;
+          return policies && Object.keys(policies).length > 0 ? policies : undefined;
+        },
         requestHuman: async ({ runId, summary, reason }) => {
           const run = await this.store.runs.get(runId);
           if (!run) return undefined;

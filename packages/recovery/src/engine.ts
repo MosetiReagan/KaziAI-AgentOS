@@ -56,6 +56,12 @@ export interface RecoveryEngineOptions {
   switchProvider?(input: ProviderSwitchRequest & { to: ModelRef }): Promise<ModelRef | undefined>;
   /** Create a durable human intervention request and park the run. */
   requestHuman?(input: HumanInterventionRequest): Promise<{ approvalId?: string } | undefined>;
+  /**
+   * Recovery policies that depend on the run rather than the deployment, e.g.
+   * the `recovery:` block of the agent definition executing it (spec §35).
+   * Resolved per decision, so two runs on one worker can recover differently.
+   */
+  policiesFor?(runId: string): RecoveryPolicyMap | undefined | Promise<RecoveryPolicyMap | undefined>;
   circuitBreakers?: { get(key: string): CircuitBreaker };
   /** Wait out the backoff inside `execute` before the runtime retries. */
   awaitBackoff?: boolean;
@@ -89,9 +95,18 @@ export class DefaultRecoveryEngine implements RecoveryEngine {
     return this.policies[kind] ?? this.policies['unknown'] ?? DEFAULT_RECOVERY_POLICIES['unknown']!;
   }
 
+  /**
+   * The policy that applies to this run: the agent definition's own entry for
+   * the failure kind wins over the deployment default.
+   */
+  async policyForRun(kind: string, runId: string): Promise<RecoveryPolicy> {
+    const overrides = await this.options.policiesFor?.(runId);
+    return overrides?.[kind] ?? this.policyFor(kind);
+  }
+
   async decide(context: RecoveryContext): Promise<RecoveryDecision> {
     const classification = context.classification;
-    const policy = this.policyFor(classification.kind);
+    const policy = await this.policyForRun(classification.kind, context.runId);
     const maxAttempts = policy.maxAttempts ?? 1;
 
     if (classification.terminal || TERMINAL_KINDS.has(classification.kind)) {
