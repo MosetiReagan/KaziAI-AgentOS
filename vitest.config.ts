@@ -34,7 +34,11 @@ export default defineConfig({
     projects: [
       {
         resolve: { alias: alias() },
-        test: { name: 'unit', include: ['packages/*/test/**/*.test.ts'], exclude: ['**/*..integration.test.ts'] },
+        test: {
+          name: 'unit',
+          include: ['packages/*/test/**/*.test.ts', 'apps/*/test/**/*.test.ts'],
+          exclude: ['**/*..integration.test.ts'],
+        },
       },
       {
         resolve: { alias: alias() },
