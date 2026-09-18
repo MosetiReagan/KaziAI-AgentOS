@@ -17,6 +17,7 @@ import {
   type RecoveryContext,
   type RecoveryDecision,
   type RiskLevel,
+  type Redactor,
   type RunState,
 } from '@kazi-ai/agentos-core';
 import type { AgentOSStore } from '@kazi-ai/agentos-persistence';
@@ -53,6 +54,8 @@ export interface AgentLoopOptions {
   modelStep: ModelStep;
   registry: ToolRegistry;
   risk: RiskClassifier;
+  /** Scrubs known secret values out of anything the loop persists. */
+  redactor?: Redactor;
   spans?: SpanFactory;
   logger?: { warn(msg: string, fields?: Record<string, unknown>): void; info(msg: string, fields?: Record<string, unknown>): void };
   now?: () => number;
@@ -252,6 +255,11 @@ export class AgentLoop {
       return { status: 'timed_out', error, reason: error.message };
     }
     return this.fail(session, error);
+  }
+
+  /** Remove every secret value this process has resolved from a payload. */
+  private scrub<T>(value: T): T {
+    return this.options.redactor?.scrubDeep(value) ?? value;
   }
 
   /** Phase 2: look at the durable world before deciding anything. */
@@ -545,11 +553,13 @@ export class AgentLoop {
         toolId: outcome.toolId,
         code: outcome.error.code,
         category: outcome.error.category,
-        message: outcome.error.message,
+        // A failure message routinely quotes the command and its output, which
+        // is exactly where a resolved credential would show up (spec §66).
+        message: this.scrub(outcome.error.message),
         retryable: outcome.error.retryable,
         terminal: outcome.error.terminal,
         at: this.now(),
-        detail: outcome.error.toJSON(),
+        detail: this.scrub(outcome.error.toJSON()),
       });
     }
     const type =
@@ -575,6 +585,10 @@ export class AgentLoop {
     execution: ExecutionOutcome,
     step: { id: string; index: number; description: string } | undefined,
   ): Promise<LoopOutcome | undefined> {
+    // An agent that declared recovery off means it: a failure is reported, not
+    // silently retried or re-planned behind the operator's back (spec §6, §35).
+    if (session.run.config.recoveryEnabled === false) return undefined;
+
     const failedOutcome = execution.outcomes.find((outcome) => outcome.status === 'failed');
     if (!failedOutcome) return undefined;
 
@@ -773,7 +787,7 @@ export class AgentLoop {
         summary: summary.slice(0, 2_000),
       });
     }
-    if (session.verifier) {
+    if (session.verifier && session.run.config.verificationEnabled !== false) {
       await session.advanceTo('VERIFYING', 'verifying the objective');
       await session.emit('verification.started', { commands: session.verificationCommands.join(' ') });
       const span = session.span('agent.verification', {});

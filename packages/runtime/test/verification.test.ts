@@ -115,7 +115,10 @@ describe('verification inside a run', () => {
           ]),
       },
     });
-    const run = await harness.runtime.createRun(harness.runInput());
+    // Verification is opt-in per run, and this run is about verification.
+    const run = await harness.runtime.createRun(
+      harness.runInput({ config: { ...harness.defaultConfig(), verificationEnabled: true } }),
+    );
     await harness.runtime.start(run.id);
 
     const finished = await harness.runtime.getRun(run.id);
@@ -150,7 +153,9 @@ describe('verification inside a run', () => {
       runtime: { verifier },
       limits: { maxSteps: 12 },
     });
-    const run = await harness.runtime.createRun(harness.runInput());
+    const run = await harness.runtime.createRun(
+      harness.runInput({ config: { ...harness.defaultConfig(), verificationEnabled: true } }),
+    );
     await harness.runtime.start(run.id);
 
     const finished = await harness.runtime.getRun(run.id);

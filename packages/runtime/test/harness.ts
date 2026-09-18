@@ -66,6 +66,8 @@ export interface Harness {
   rootDir: string;
   workspaceRoot: string;
   runInput(overrides?: Partial<AgentRunInput>): AgentRunInput;
+  /** The default run configuration, for tests that need to tweak one switch. */
+  defaultConfig(overrides?: Partial<AgentRunInput>): RunConfigSnapshot;
   cleanup(): Promise<void>;
 }
 
@@ -122,6 +124,7 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
     store,
     rootDir,
     workspaceRoot,
+    defaultConfig: config,
     runInput(overrides: Partial<AgentRunInput> = {}): AgentRunInput {
       const cfg = overrides.config ?? config(overrides);
       return {
