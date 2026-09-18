@@ -1,0 +1,10 @@
+{
+  "name": "cart-kata",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "description": "A tiny repository with a real failing test, used by the AgentOS example.",
+  "scripts": {
+    "test": "node --test"
+  }
+}

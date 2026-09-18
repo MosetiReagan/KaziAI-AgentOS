@@ -260,6 +260,8 @@ describe('recovery policies an agent declares', () => {
       system_prompt: 'You are a test agent.',
       tools: ['brittle.write'],
       permissions: {},
+      planning: false,
+      verification: false,
       recovery: {
         enabled: true,
         // The default for tool_failure is retry_with_backoff; this agent would
@@ -270,11 +272,10 @@ describe('recovery policies an agent declares', () => {
 
     os = await agentOSFor(
       [
-        planTurn('write something', 'write it'),
         { text: 'writing', toolCalls: [{ name: 'brittle.write', arguments: { path: 'x.txt' } }] },
         { text: 'the dependency is down, so the file could not be written' },
       ],
-      { tools: [brittle], planning: false, verification: false },
+      { tools: [brittle] },
     );
     const agent = os.agent(definition);
     await agent.register();

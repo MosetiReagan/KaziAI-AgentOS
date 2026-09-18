@@ -44,5 +44,6 @@ Thumbs.db
 # AgentOS run workspaces and local state
 .kazi/
 artifacts/
+.agentos/
 *.tsbuildinfo
 .tmp/

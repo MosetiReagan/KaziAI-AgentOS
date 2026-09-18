@@ -1,0 +1,72 @@
+{
+  "note": [
+    "A recorded decision script for the deterministic provider (spec \u00a787).",
+    "It exists so this example runs offline and in CI with no API key, and so",
+    "the exact same trajectory can be replayed in a bug report.",
+    "Run with --live to put a real model in the same seat instead.",
+    "The first turn is the planner's answer: planning is on in agent.yaml, so the",
+    "runtime asks the model for a plan before it lets the agent act (spec \u00a79)."
+  ],
+  "turns": [
+    {
+      "text": "{\"objective\": \"Fix the failing cart test suite and prove it passes\", \"steps\": [{\"description\": \"Read src/cart.js to find why the total is wrong\", \"tool\": \"filesystem.read\"}, {\"description\": \"Run the test suite and capture the failure\", \"tool\": \"terminal.exec\"}, {\"description\": \"Correct the total() calculation in src/cart.js\", \"tool\": \"filesystem.edit\"}, {\"description\": \"Re-run the test suite to confirm it passes\", \"tool\": \"terminal.exec\"}]}"
+    },
+    {
+      "text": "I will start by reading the source that the failing test exercises.",
+      "toolCalls": [
+        {
+          "name": "filesystem.read",
+          "arguments": {
+            "path": "src/cart.js"
+          }
+        }
+      ]
+    },
+    {
+      "text": "Now let us see the failure for ourselves.",
+      "toolCalls": [
+        {
+          "name": "terminal.exec",
+          "arguments": {
+            "command": "node",
+            "args": [
+              "--test"
+            ],
+            "idempotent": true
+          }
+        }
+      ]
+    },
+    {
+      "text": "`total()` adds the unit price once per line and never multiplies by `quantity`. Fixing that line.",
+      "toolCalls": [
+        {
+          "name": "filesystem.edit",
+          "arguments": {
+            "path": "src/cart.js",
+            "old_text": "return this.items.reduce((sum, item) => sum + item.price, 0);",
+            "new_text": "return this.items.reduce((sum, item) => sum + item.price * item.quantity, 0);"
+          }
+        }
+      ]
+    },
+    {
+      "text": "Running the suite again to confirm the fix.",
+      "toolCalls": [
+        {
+          "name": "terminal.exec",
+          "arguments": {
+            "command": "node",
+            "args": [
+              "--test"
+            ],
+            "idempotent": true
+          }
+        }
+      ]
+    },
+    {
+      "text": "The suite passes. `total()` now bills each line for its quantity: the reducer multiplies `item.price` by `item.quantity`, so four espressos at 2.50 and one grinder at 10.00 total 20.00, and the empty-cart case still returns 0."
+    }
+  ]
+}

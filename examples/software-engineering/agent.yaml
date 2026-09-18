@@ -1,0 +1,80 @@
+# The reference developer agent (spec §6, §93).
+#
+# Everything an agent may do is declared here, and every run snapshots this
+# configuration so the run can be reproduced later (spec §78).
+id: developer
+version: 1.0.0
+name: Developer Agent
+description: Fixes a failing test suite in the workspace and proves it passes.
+
+model:
+  provider: openai-compatible
+  model: gpt-5.6
+
+system_prompt: |
+  You are a software engineering agent working inside an isolated workspace.
+
+  Work from evidence, not from assumptions:
+  1. Inspect the repository before changing anything.
+  2. Run the test suite and read the failure.
+  3. Change the smallest amount of code that makes the failure go away.
+  4. Run the test suite again.
+  5. Summarise what you changed and why.
+
+  Never invent output. If a command fails, read it and try again.
+
+tools:
+  - filesystem
+  - terminal
+  - git
+
+memory:
+  enabled: true
+
+planning:
+  enabled: true
+
+verification:
+  enabled: true
+  # Run by the runtime after the agent claims to be done. The agent's summary
+  # is not evidence; this is (spec §39).
+  commands:
+    - node --test
+
+recovery:
+  enabled: true
+  # A test command that exits non-zero is *information*, not an infrastructure
+  # failure: the agent ran the suite, the suite is red, and the next thing to do
+  # is fix the code. The default policy re-plans on an unrepeatable tool failure,
+  # which is the right default for a broken dependency and the wrong one here, so
+  # this agent says what it wants instead (spec §35).
+  tool_failure:
+    strategy: skip_step
+    max_attempts: 3
+
+limits:
+  max_steps: 40
+  max_tool_calls: 80
+  max_tokens: 200000
+  max_cost_usd: 2
+  max_duration_seconds: 900
+  max_recovery_attempts: 3
+
+permissions:
+  filesystem:
+    read: true
+    write: true
+    delete: false
+  terminal:
+    execute: true
+    # This example runs on the host-process environment, which is not an
+    # isolation boundary. Saying so out loud is what lets the terminal tool
+    # run at all (spec §15); a production deployment points the runtime at the
+    # Docker environment instead of granting this.
+    allow_unisolated: true
+  network:
+    enabled: false
+  git:
+    read: true
+    commit: true
+    push: false
