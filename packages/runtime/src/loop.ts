@@ -4,6 +4,7 @@ import {
   ResourceExhaustedError,
   ValidationError,
   hashObject,
+  persistedBytes,
   toAgentError,
   type AgentAction,
   type AgentRun,
@@ -162,7 +163,8 @@ export class AgentLoop {
       session.lastSignature = signature;
 
       const execution = await this.act(session, decision.actions, step);
-      await this.record(session, decision, execution, step);
+      const recorded = await this.record(session, decision, execution, step);
+      if (recorded) return recorded;
 
       if (execution.awaitingApproval > 0) return this.awaitApproval(session, execution);
 
@@ -204,6 +206,25 @@ export class AgentLoop {
 
       await session.persist();
     }
+  }
+
+  /**
+   * Storage can only be measured after a tool commits, so it is the one budget
+   * dimension re-checked mid-step. Without this a single large write could
+   * overshoot the quota by an entire step before the next iteration noticed.
+   */
+  private async checkStorageLimit(session: RunSession): Promise<LoopOutcome | undefined> {
+    const status = session.budgetReport().statuses.find((item) => item.dimension === 'storageBytes');
+    if (!status?.exceeded) return undefined;
+    await session.emit('budget.exceeded', {
+      dimension: 'storageBytes',
+      used: status.used,
+      limit: status.limit ?? null,
+    });
+    return this.fail(
+      session,
+      new BudgetExceededError('storageBytes', status.limit ?? 0, status.used),
+    );
   }
 
   /** Phase 1: enforce every budget dimension independently of the model. */
@@ -435,12 +456,22 @@ export class AgentLoop {
     decision: ModelStepResult,
     execution: ExecutionOutcome,
     step: { id: string; index: number; description: string } | undefined,
-  ): Promise<void> {
+  ): Promise<LoopOutcome | undefined> {
     const usage = session.run.usage;
+    const committed = execution.outcomes.filter(
+      (outcome) => outcome.status === 'succeeded' || outcome.status === 'already_committed',
+    );
     session.addUsage({
       toolCalls: usage.toolCalls + execution.outcomes.length,
       networkRequests:
         usage.networkRequests + execution.outcomes.filter((outcome) => outcome.toolId === 'http.request').length,
+      // Byte budgets can only be charged after the tool ran, so the runtime
+      // derives them from what each tool reported writing (spec §25/§70).
+      storageBytes: Math.max(
+        0,
+        usage.storageBytes +
+          committed.reduce((total, outcome) => total + persistedBytes(outcome.result), 0),
+      ),
       durationMs: session.elapsedMs(),
     });
 
@@ -485,6 +516,7 @@ export class AgentLoop {
     }
 
     await session.persist();
+    return this.checkStorageLimit(session);
   }
 
   private async recordOutcome(

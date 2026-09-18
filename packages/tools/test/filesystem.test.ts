@@ -112,5 +112,40 @@ describe('filesystem tools', () => {
     const context = await createTestToolContext({ permissions: deletePermissions });
     await expect(createFilesystemDeleteTool().execute({ path: '.', recursive: true }, context)).rejects.toBeTruthy();
   });
-});
 
+  it('reports persisted bytes so the runtime can charge a storage budget (spec §25)', async () => {
+    const context = await createTestToolContext({ permissions: writePermissions });
+    const write = await createFilesystemWriteTool().execute(
+      { path: 'notes.md', content: 'hello' },
+      context,
+    );
+    expect(write.metadata?.['persistedBytes']).toBe(5);
+
+    const overwrite = await createFilesystemWriteTool().execute(
+      { path: 'notes.md', content: 'hello world!!' },
+      context,
+    );
+    expect(overwrite.metadata?.['persistedBytes']).toBe(8);
+
+    const append = await createFilesystemWriteTool().execute(
+      { path: 'notes.md', content: '!', mode: 'append' },
+      context,
+    );
+    expect(append.metadata?.['persistedBytes']).toBe(1);
+
+    const edit = await createFilesystemEditTool().execute(
+      { path: 'notes.md', old_text: 'hello world!!', new_text: 'hi' },
+      context,
+    );
+    expect(edit.metadata?.['persistedBytes']).toBe(-11);
+  });
+
+  it('credits the budget with the bytes a recursive delete frees', async () => {
+    const context = await createTestToolContext({ permissions: deletePermissions });
+    mkdirSync(join(context.workspaceDir, 'dir', 'nested'), { recursive: true });
+    writeFileSync(join(context.workspaceDir, 'dir', 'a.txt'), 'aaaa');
+    writeFileSync(join(context.workspaceDir, 'dir', 'nested', 'b.txt'), 'bbbbbb');
+    const deleted = await createFilesystemDeleteTool().execute({ path: 'dir', recursive: true }, context);
+    expect(deleted.metadata?.['persistedBytes']).toBe(-10);
+  });
+});

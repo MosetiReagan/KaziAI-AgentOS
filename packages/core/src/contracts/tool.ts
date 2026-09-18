@@ -110,10 +110,27 @@ export interface ToolResult {
   success: boolean;
   output: JsonValue;
   error?: ToolErrorInfo;
+  /**
+   * Structured, non-model-facing facts about the call. Tools that durably
+   * persist bytes report them under `persistedBytes` so the runtime can charge
+   * the run's storage budget (spec §25); see `persistedBytes()`.
+   */
   metadata?: JsonObject;
   /** Declared so the runtime knows whether the action may be replayed on recovery. */
   idempotency?: 'idempotent' | 'retry-safe' | 'non-idempotent' | 'unknown';
   durationMs?: number;
+}
+
+/**
+ * Bytes a tool result durably added to the run's workspace, taken from the
+ * `metadata.persistedBytes` convention. Negative values (an edit that shrank a
+ * file) are honoured so the total tracks real growth rather than churn.
+ * Malformed values are treated as zero instead of being trusted.
+ */
+export function persistedBytes(result: ToolResult | undefined): number {
+  const raw = result?.metadata?.['persistedBytes'];
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return 0;
+  return Math.trunc(raw);
 }
 
 /** Zod-like schema interface; kept structural so tools can use any validator. */

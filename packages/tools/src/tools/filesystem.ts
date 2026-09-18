@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, renameSync, statSync, writeFileSync, type Stats } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { z } from 'zod';
 import { ToolExecutionError, ToolInputError, toolResult, type AgentTool, type JsonValue, type ToolContext } from '@kazi-ai/agentos-core';
@@ -134,8 +134,10 @@ export function createFilesystemWriteTool(options: FilesystemToolOptions = {}): 
       }
       mkdirSync(dirname(target), { recursive: true });
       const existed = existsSync(target);
+      const previousBytes = existed ? statSync(target).size : 0;
       if (args.mode === 'append') writeFileSync(target, args.content, { encoding: 'utf8', flag: 'a' });
       else writeFileSync(target, args.content, 'utf8');
+      const persisted = args.mode === 'append' ? bytes : bytes - previousBytes;
       return toolResult({
         success: true,
         output: {
@@ -144,6 +146,7 @@ export function createFilesystemWriteTool(options: FilesystemToolOptions = {}): 
           created: !existed,
           sha256: createHash('sha256').update(args.content).digest('hex'),
         } as JsonValue,
+        metadata: { persistedBytes: persisted },
         idempotency: 'retry-safe',
       });
     },
@@ -191,6 +194,7 @@ export function createFilesystemEditTool(): AgentTool {
       return toolResult({
         success: true,
         output: { path: guard.toRelative(target), replacements: args.replace_all ? occurrences : 1 } as JsonValue,
+        metadata: { persistedBytes: Buffer.byteLength(updated, 'utf8') - Buffer.byteLength(original, 'utf8') },
         idempotency: 'retry-safe',
       });
     },
@@ -390,10 +394,12 @@ export function createFilesystemDeleteTool(): AgentTool {
       if (stats.isDirectory() && !args.recursive) {
         throw new ToolInputError('filesystem.delete', 'Target is a directory; pass recursive to delete it');
       }
+      const freed = freedBytes(target, stats, args.recursive);
       rmSync(target, { recursive: args.recursive, force: false });
       return toolResult({
         success: true,
         output: { path: guard.toRelative(target), deleted: true } as JsonValue,
+        metadata: { persistedBytes: -freed },
         idempotency: 'retry-safe',
       });
     },
@@ -413,3 +419,32 @@ export function createFilesystemTools(options: FilesystemToolOptions = {}): Agen
 }
 
 export { schemaToJsonSchema };
+
+/** Bytes a delete actually frees, so the storage budget tracks real usage. */
+function freedBytes(target: string, stats: Stats, recursive: boolean): number {
+  if (!stats.isDirectory()) return stats.size;
+  if (!recursive) return 0;
+  let total = 0;
+  const stack = [target];
+  while (stack.length > 0) {
+    const current = stack.pop() as string;
+    let entries;
+    try {
+      entries = readdirSync(current, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const child = join(current, entry.name);
+      if (entry.isDirectory()) stack.push(child);
+      else if (entry.isFile()) {
+        try {
+          total += statSync(child).size;
+        } catch {
+          // Raced with another delete; nothing was freed by us.
+        }
+      }
+    }
+  }
+  return total;
+}
