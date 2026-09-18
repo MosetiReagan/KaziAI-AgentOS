@@ -1,4 +1,5 @@
 export * from './control.js';
+export * from './dispatcher.js';
 export * from './events.js';
 export * from './backpressure.js';
 export * from './verification.js';
