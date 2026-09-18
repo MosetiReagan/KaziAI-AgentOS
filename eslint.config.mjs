@@ -3,7 +3,23 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['**/dist/**', '**/node_modules/**', '**/coverage/**', '**/.turbo/**', '.tmp/**', '.kazi/**'] },
+  {
+    ignores: [
+      '**/dist/**',
+      '**/node_modules/**',
+      '**/coverage/**',
+      '**/.turbo/**',
+      '.tmp/**',
+      // Durable state and run workspaces. They are written by the runtime at
+      // run time: linting them lints whatever an example happened to execute,
+      // and a stale workspace would fail CI with errors nobody wrote.
+      '**/.kazi/**',
+      '**/.agentos/**',
+      // Fixture repositories. They are inputs to the examples - deliberately
+      // CommonJS, deliberately not ours to restyle.
+      'examples/*/repo/**',
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

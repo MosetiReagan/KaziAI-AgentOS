@@ -143,18 +143,19 @@ export class Chaos {
 
   /** Wrap a tool so the injector can time it out, break it or corrupt it. */
   tool<T extends AgentTool>(tool: T): T {
-    const chaos = this;
+    const take = (kinds: Set<ChaosFaultKind>, id: string) => this.take(kinds, id);
+    const hang = (signal: AbortSignal, id: string) => this.hang(signal, id);
     return {
       ...tool,
       // A shorter declared timeout is what turns `tool_timeout` into a real
       // abort rather than a test that hangs.
       timeoutMs: Math.min(tool.timeoutMs ?? 5_000, 400),
       async execute(input: never, context): Promise<ToolResult> {
-        const fault = chaos.take(TOOL_KINDS, tool.id);
+        const fault = take(TOOL_KINDS, tool.id);
         if (!fault) return tool.execute(input, context);
         switch (fault.kind) {
           case 'tool_timeout':
-            return chaos.hang(context.signal, tool.id) as Promise<ToolResult>;
+            return hang(context.signal, tool.id) as Promise<ToolResult>;
           case 'tool_error':
             throw new ToolExecutionError(tool.id, 'injected tool failure', {
               code: 'tool.execution_failed',
@@ -185,12 +186,12 @@ export class Chaos {
 
   /** Wrap a provider so the injector can time it out, break it or corrupt it. */
   provider(provider: ModelProvider): ModelProvider {
-    const chaos = this;
+    const take = (kinds: Set<ChaosFaultKind>, id: string) => this.take(kinds, id);
     const wrapper: ModelProvider = {
       id: provider.id,
       kind: provider.kind,
       async generate(request: ModelRequest): Promise<ModelResponse> {
-        const fault = chaos.take(PROVIDER_KINDS, provider.id);
+        const fault = take(PROVIDER_KINDS, provider.id);
         if (!fault) return provider.generate(request);
         switch (fault.kind) {
           case 'provider_timeout':
@@ -231,7 +232,11 @@ export class Chaos {
    * does: the call rejects, it does not silently return stale data.
    */
   store(store: AgentOSStore): AgentOSStore {
-    const chaos = this;
+    const take = (
+      kinds: Set<ChaosFaultKind>,
+      id: string,
+      filter?: { surfaces?: StoreSurface[]; method?: string },
+    ) => this.take(kinds, id, filter);
     return new Proxy(store, {
       get(target, property, receiver) {
         const value = Reflect.get(target, property, receiver) as unknown;
@@ -243,7 +248,7 @@ export class Chaos {
             const fn = Reflect.get(surface, method, surfaceReceiver) as unknown;
             if (typeof fn !== 'function') return fn;
             return (...args: unknown[]) => {
-              const fault = chaos.take(new Set<ChaosFaultKind>(['store_failure']), property, {
+              const fault = take(new Set<ChaosFaultKind>(['store_failure']), property, {
                 surfaces: [property as StoreSurface],
                 method: String(method),
               });
