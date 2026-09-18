@@ -36,6 +36,11 @@ export const DEFAULT_FAILURE_RULES: FailureRule[] = [
   { code: 'state.invalid_transition', kind: 'state_conflict', risk: 'MEDIUM' },
   { code: 'concurrency.conflict', kind: 'state_conflict', risk: 'MEDIUM' },
   { code: 'resource.exhausted', kind: 'resource_exhausted', risk: 'MEDIUM' },
+  // The durable store being unavailable is an infrastructure outage, not a
+  // reason to change the plan: back off and let the dependency come back
+  // (spec §31, §43). The worker releases the run if the outage outlasts the
+  // recovery attempts, so a healthy worker resumes it from its checkpoint.
+  { code: 'storage.*', kind: 'resource_exhausted', risk: 'MEDIUM' },
   { code: 'run.cancelled', kind: 'cancelled', risk: 'LOW' },
   { code: 'operation.aborted', kind: 'cancelled', risk: 'LOW' },
   { code: 'configuration.*', kind: 'configuration_error', risk: 'MEDIUM' },

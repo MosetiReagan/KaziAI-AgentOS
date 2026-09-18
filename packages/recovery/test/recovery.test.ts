@@ -60,6 +60,21 @@ describe('FailureClassifier', () => {
     expect(classifier.classify(new AgentError({ code: 'verification.failed', message: 'tests failed', category: 'validation' })).kind).toBe('verification_failed');
   });
 
+  it('treats an unavailable durable store as a retryable infrastructure outage', () => {
+    const classification = classifier.classify(
+      new AgentError({
+        code: 'storage.unavailable',
+        message: 'the store rejected the write',
+        category: 'internal',
+        retryable: true,
+        idempotency: 'idempotent',
+      }),
+    );
+    // Re-planning would not bring the database back; the run has to back off.
+    expect(classification.kind).toBe('resource_exhausted');
+    expect(classification.retryable).toBe(true);
+  });
+
   it('never assumes an unknown error is retryable', () => {
     const classification = classifier.classify(new Error('mystery'));
     expect(classification.kind).toBe('unknown');
