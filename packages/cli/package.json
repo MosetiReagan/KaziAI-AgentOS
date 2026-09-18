@@ -29,6 +29,7 @@
     "@kazi-ai/agentos-evaluation": "workspace:*",
     "@kazi-ai/agentos-persistence": "workspace:*",
     "@kazi-ai/agentos-policies": "workspace:*",
+    "@kazi-ai/agentos-providers": "workspace:*",
     "@kazi-ai/agentos-runtime": "workspace:*",
     "@kazi-ai/agentos-tools": "workspace:*"
   }

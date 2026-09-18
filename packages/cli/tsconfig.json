@@ -9,6 +9,7 @@
   "references": [
     { "path": "../core" },
     { "path": "../persistence" },
+    { "path": "../providers" },
     { "path": "../policies" },
     { "path": "../tools" },
     { "path": "../agent" },
