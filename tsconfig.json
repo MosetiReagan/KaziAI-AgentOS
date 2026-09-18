@@ -29,6 +29,7 @@
       "@kazi-ai/agentos-gateway": ["apps/gateway/src/index.ts"]
     }
   },
-  "include": ["packages/*/src/**/*.ts", "packages/*/test/**/*.ts", "apps/*/src/**/*.ts", "tests/**/*.ts", "examples/**/*.ts"]
+  "include": ["packages/*/src/**/*.ts", "packages/*/test/**/*.ts", "apps/*/src/**/*.ts", "tests/**/*.ts", "examples/**/*.ts"],
+  "exclude": ["apps/dashboard/**", "node_modules", "**/dist/**"]
 }
 
