@@ -4,7 +4,14 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { FakeModelProvider, type FakeTurn } from '@kazi-ai/agentos-providers';
-import { NullLogger, newPlanId, newStepId, type Plan, type Planner } from '@kazi-ai/agentos-core';
+import {
+  NullLogger,
+  newPlanId,
+  newStepId,
+  type Plan,
+  type Planner,
+  type ToolPermissions,
+} from '@kazi-ai/agentos-core';
 import { createAgentOS, defineTool, type AgentOS } from '../src/index.js';
 
 let os: AgentOS | undefined;
@@ -257,6 +264,70 @@ describe('agent definition durability', () => {
       expect(resolved.version).toBe('1.2.0');
     } finally {
       await second.close();
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+});
+
+/**
+ * A run request may narrow the agent definition but never widen it. Before this
+ * was enforced, a caller who could create a run could hand themselves a
+ * capability the definition deliberately withheld — including the opt-in that
+ * lets an isolation-requiring tool run on a host-process environment (spec §15,
+ * §21).
+ */
+describe('a run request cannot widen the agent definition', () => {
+  async function agentFor(permissions: ToolPermissions) {
+    const dataDir = mkdtempSync(join(tmpdir(), 'kazi-sdk-perms-'));
+    const os = await createAgentOS({
+      dataDir,
+      organizationId: 'org_test',
+      projectId: 'prj_test',
+      providersFromEnv: false,
+      providers: [new FakeModelProvider({ turns: [], onExhausted: { text: 'done' } })],
+      logger: new NullLogger(),
+    });
+    const agent = os.agent({
+      id: 'narrow-agent',
+      model: { provider: 'fake', model: 'fake-1' },
+      tools: ['terminal'],
+      permissions,
+    });
+    await agent.register();
+    return { os, agent, dataDir };
+  }
+
+  it('refuses an allow_unisolated grant the definition did not give', async () => {
+    const { os, agent, dataDir } = await agentFor({
+      terminal: { execute: true },
+    });
+    try {
+      const run = await agent.createRun({
+        goal: 'Run a command',
+        permissions: { terminal: { execute: true, allowUnisolated: true } },
+      });
+      expect(run.config.permissions.terminal?.allowUnisolated).toBe(false);
+    } finally {
+      await os.close();
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it('still lets a request narrow a family the definition granted', async () => {
+    const { os, agent, dataDir } = await agentFor({
+      filesystem: { read: true, write: true },
+      terminal: { execute: true, allowUnisolated: true },
+    });
+    try {
+      const run = await agent.createRun({
+        goal: 'Read only',
+        permissions: { filesystem: { read: true, write: false } },
+      });
+      expect(run.config.permissions.filesystem).toMatchObject({ read: true, write: false });
+      // A family the request stayed silent about keeps the definition's grant.
+      expect(run.config.permissions.terminal?.allowUnisolated).toBe(true);
+    } finally {
+      await os.close();
       rmSync(dataDir, { recursive: true, force: true });
     }
   });

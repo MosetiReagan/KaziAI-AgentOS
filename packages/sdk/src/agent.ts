@@ -1,7 +1,7 @@
 import {
   ConfigurationError,
   ValidationError,
-  mergePermissions,
+  restrictPermissions,
   type AgentRun,
   type AgentRunInput,
   type AgentRunResult,
@@ -231,10 +231,15 @@ export class Agent {
       );
     }
     const limits = { ...this.definition.limits, ...(request.limits ?? {}) };
-    // The definition carries the effective grant, and a run may only narrow it.
-    // Spreading here would let a caller replace a whole permission family and
-    // thereby widen what the agent definition allowed (spec §21, §47).
-    const permissions = mergePermissions([this.definition.permissions, request.permissions]);
+    // The definition is the ceiling and a request may only narrow it.
+    //
+    // Not `mergePermissions`: that treats an unspecified layer as "no opinion",
+    // which is right for stacking policy but wrong here — a request that named
+    // a capability the definition never granted (or an `allow_unisolated` the
+    // definition deliberately withheld) would widen the grant. A tool
+    // declaration is likewise not a policy layer, so anything the definition
+    // does not state is denied (spec §21, §47).
+    const permissions = restrictPermissions(this.definition.permissions, request.permissions);
     return {
       goal: request.goal,
       agentId: this.id,
