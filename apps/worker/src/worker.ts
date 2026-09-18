@@ -140,7 +140,13 @@ export class AgentWorker {
       this.stats.claimed += 1;
       this.track(item);
     }
-    if (claimed > 0) await this.maybeSweep();
+    // Sweeping must not depend on having claimed something. If the only
+    // queued run carries the stale claim of a worker that died, `claim()`
+    // correctly refuses to touch it — so gating the sweep on `claimed > 0`
+    // means the run is never reclaimed and the queue looks empty forever.
+    // `maybeSweep` is interval-gated, so this does not poll the store on every
+    // iteration (spec §31, §44).
+    await this.maybeSweep();
     return claimed;
   }
 

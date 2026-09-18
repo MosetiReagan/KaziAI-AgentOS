@@ -40,8 +40,27 @@ export interface StoreRunQueueOptions {
   now?: () => number;
 }
 
-/** Runs in these states are eligible for execution. */
-const CLAIMABLE = new Set(['CREATED', 'QUEUED']);
+/**
+ * Runs in these states are eligible for execution.
+ *
+ * Not just CREATED/QUEUED: the whole point of a durable queue is that a worker
+ * can die *while executing* and another worker takes the run over. Such a run
+ * sits in INITIALIZING/EXECUTING/RECOVERING, and if it were not claimable the
+ * crash would strand it forever (spec §31, §44, §114).
+ *
+ * `WAITING` is deliberately absent: a run paused for a human decision is not
+ * on the queue, it advances when the approval is decided.
+ */
+const CLAIMABLE = new Set([
+  'CREATED',
+  'QUEUED',
+  'INITIALIZING',
+  'PLANNING',
+  'EXECUTING',
+  'OBSERVING',
+  'VERIFYING',
+  'RECOVERING',
+]);
 
 const CLAIM_KEY = 'kazi.claim';
 
@@ -96,7 +115,12 @@ export class StoreRunQueue implements RunQueue {
       // claim stays claimed until `reclaimStale` deliberately releases it -
       // otherwise a lost run would be executed by two workers at once.
       if (existing && existing.at > 0) continue;
-      const action: DispatchAction = run.status === 'PAUSED' ? 'resume' : 'start';
+      // Only a run that has never started is *started*. Everything else —
+      // PAUSED by an operator, or left in an in-flight state by a worker that
+      // died — is *resumed*, so the runtime reloads the committed state and
+      // continues instead of restarting the work (spec §31, §114).
+      const action: DispatchAction =
+        run.status === 'CREATED' || run.status === 'QUEUED' ? 'start' : 'resume';
       const marker: ClaimMarker = {
         workerId: this.options.workerId,
         at: this.now(),

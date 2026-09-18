@@ -87,6 +87,22 @@ describe('durable run queue', () => {
     expect(claimOf(stored!)).toMatchObject({ workerId: 'worker-a', attempt: 1 });
   });
 
+  it('resumes a run a dead worker left mid-execution instead of starting it over', async () => {
+    const agentos = await build();
+    const run = await (await developerAgent(agentos)).createRun({ goal: 'interrupted' });
+
+    // Exactly the state a SIGKILL leaves behind: the run was executing when
+    // its worker vanished (spec §114).
+    await agentos.store.runs.update({ ...run, status: 'EXECUTING' }, run.stateVersion);
+
+    const queue = new StoreRunQueue({ store: agentos.store, workerId: 'worker-b' });
+    const claimed = await queue.claim();
+    expect(claimed?.runId).toBe(run.id);
+    // `start` would reject a run in an in-flight state; the queue has to ask
+    // the runtime to resume so the committed state is reloaded.
+    expect(claimed?.action).toBe('resume');
+  });
+
   it('hands an abandoned claim back after a worker disappears', async () => {
     const agentos = await build();
     await (await developerAgent(agentos)).createRun({ goal: 'abandoned' });
