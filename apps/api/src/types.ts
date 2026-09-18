@@ -2,6 +2,7 @@ import type { FastifyRequest } from 'fastify';
 import type { Logger, Principal, RunLimits, SecretProvider } from '@kazi-ai/agentos-core';
 import type { AgentOSStore } from '@kazi-ai/agentos-persistence';
 import type { AgentOS } from '@kazi-ai/agentos';
+import type { ApiKeyAuthenticator } from './auth.js';
 import type { AgentCatalog } from './catalog.js';
 import type { RunDispatcher } from './dispatcher.js';
 
@@ -62,6 +63,10 @@ export interface ApiContext {
   readonly organizationId: string;
   readonly projectId: string;
   readonly options: ApiOptions;
+  /** Key management and bootstrap, exposed for the CLI and `doctor`. */
+  readonly auth: ApiKeyAuthenticator;
+  /** The plaintext bootstrap key, present only when one was just created. */
+  readonly bootstrap?: { created: boolean; key?: string };
   now(): number;
   /** Resolve the caller. Never trusts a header it has not verified. */
   principal(request: FastifyRequest): Promise<Principal>;

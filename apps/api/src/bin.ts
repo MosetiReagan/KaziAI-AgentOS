@@ -17,6 +17,19 @@ async function main(): Promise<void> {
     })}\n`,
   );
 
+  const bootstrapKey = api.context.bootstrap?.key;
+  if (bootstrapKey) {
+    process.stdout.write(
+      `${JSON.stringify({
+        level: 'warn',
+        msg: 'created a bootstrap admin API key; store it now, it is not shown again',
+        organizationId: api.context.organizationId,
+        projectId: api.context.projectId,
+        apiKey: bootstrapKey,
+      })}\n`,
+    );
+  }
+
   let stopping = false;
   const shutdown = async (signal: string): Promise<void> => {
     if (stopping) return;

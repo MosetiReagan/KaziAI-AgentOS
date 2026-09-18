@@ -33,7 +33,7 @@ export function registerRunRoutes(app: FastifyInstance): void {
 
   app.post('/api/runs', async (request, reply) => {
     const body = parse(createRunSchema, request.body, 'run');
-    const scope = await scopeFor(context, request, body);
+    const scope = await scopeFor(context, request, body, 'developer');
     const definition = await context.catalog.resolve(scope, body.agentId);
     if (!definition) {
       throw notFound(`Agent ${body.agentId} is not defined for ${scope.organizationId}`);
@@ -57,27 +57,27 @@ export function registerRunRoutes(app: FastifyInstance): void {
   });
 
   app.get('/api/runs/:id', async (request) => {
-    const { run } = await loadRun(context, request, param(request, 'id'));
+    const { run } = await loadRun(context, request, param(request, 'id'), 'viewer');
     return { run };
   });
 
   app.get('/api/runs/:id/state', async (request) => {
-    const { run } = await loadRun(context, request, param(request, 'id'));
+    const { run } = await loadRun(context, request, param(request, 'id'), 'viewer');
     return { state: await context.os.runtime.getState(run.id) };
   });
 
   app.get('/api/runs/:id/result', async (request) => {
-    const { run } = await loadRun(context, request, param(request, 'id'));
+    const { run } = await loadRun(context, request, param(request, 'id'), 'viewer');
     return { result: await context.os.runtime.result(run.id) };
   });
 
   app.get('/api/runs/:id/trace', async (request) => {
-    const { run } = await loadRun(context, request, param(request, 'id'));
+    const { run } = await loadRun(context, request, param(request, 'id'), 'viewer');
     return { trace: await context.os.runtime.getTrace(run.id) };
   });
 
   app.get('/api/runs/:id/events', async (request) => {
-    const { run } = await loadRun(context, request, param(request, 'id'));
+    const { run } = await loadRun(context, request, param(request, 'id'), 'viewer');
     const query = parse(listEventsSchema, request.query, 'query');
     const limit = query.limit ?? 200;
     const events = await context.store.events.list(run.id, {
@@ -93,82 +93,82 @@ export function registerRunRoutes(app: FastifyInstance): void {
   });
 
   app.get('/api/runs/:id/steps', async (request) => {
-    const { run } = await loadRun(context, request, param(request, 'id'));
+    const { run } = await loadRun(context, request, param(request, 'id'), 'viewer');
     return { items: await context.store.steps.list(run.id) };
   });
 
   app.get('/api/runs/:id/checkpoints', async (request) => {
-    const { run } = await loadRun(context, request, param(request, 'id'));
+    const { run } = await loadRun(context, request, param(request, 'id'), 'viewer');
     return { items: await context.store.checkpoints.list(run.id) };
   });
 
   app.get('/api/runs/:id/artifacts', async (request) => {
-    const { run } = await loadRun(context, request, param(request, 'id'));
+    const { run } = await loadRun(context, request, param(request, 'id'), 'viewer');
     return { items: await context.store.artifacts.list(run.id) };
   });
 
   app.get('/api/runs/:id/failures', async (request) => {
-    const { run } = await loadRun(context, request, param(request, 'id'));
+    const { run } = await loadRun(context, request, param(request, 'id'), 'viewer');
     return { items: await context.store.failures.list(run.id) };
   });
 
   app.get('/api/runs/:id/recoveries', async (request) => {
-    const { run } = await loadRun(context, request, param(request, 'id'));
+    const { run } = await loadRun(context, request, param(request, 'id'), 'viewer');
     return { items: await context.store.recoveries.list(run.id) };
   });
 
   app.get('/api/runs/:id/journal', async (request) => {
-    const { run } = await loadRun(context, request, param(request, 'id'));
+    const { run } = await loadRun(context, request, param(request, 'id'), 'viewer');
     return { items: await context.store.actions.list(run.id) };
   });
 
   app.get('/api/runs/:id/decisions', async (request) => {
-    const { run } = await loadRun(context, request, param(request, 'id'));
+    const { run } = await loadRun(context, request, param(request, 'id'), 'viewer');
     return { items: await context.store.policyDecisions.list(run.id) };
   });
 
   app.post('/api/runs/:id/start', async (request) => {
-    const { run } = await loadRun(context, request, param(request, 'id'));
+    const { run } = await loadRun(context, request, param(request, 'id'), 'developer');
     assertActionable(run, 'start');
     await dispatchRun(context, run, 'start');
     return { run: await reload(context, run.id) };
   });
 
   app.post('/api/runs/:id/resume', async (request) => {
-    const { run } = await loadRun(context, request, param(request, 'id'));
+    const { run } = await loadRun(context, request, param(request, 'id'), 'developer');
     assertActionable(run, 'resume');
     await dispatchRun(context, run, 'resume');
     return { run: await reload(context, run.id) };
   });
 
   app.post('/api/runs/:id/retry', async (request) => {
-    const { run } = await loadRun(context, request, param(request, 'id'));
+    const { run } = await loadRun(context, request, param(request, 'id'), 'developer');
     assertActionable(run, 'retry');
     await dispatchRun(context, run, 'retry');
     return { run: await reload(context, run.id) };
   });
 
   app.post('/api/runs/:id/pause', async (request) => {
-    const { run } = await loadRun(context, request, param(request, 'id'));
+    const { run } = await loadRun(context, request, param(request, 'id'), 'developer');
     await context.os.runtime.pause(run.id);
     return { run: await reload(context, run.id) };
   });
 
   app.post('/api/runs/:id/cancel', async (request) => {
-    const { run } = await loadRun(context, request, param(request, 'id'));
+    const { run } = await loadRun(context, request, param(request, 'id'), 'developer');
     await context.os.runtime.cancel(run.id);
     return { run: await reload(context, run.id) };
   });
 
   app.post('/api/runs/:id/checkpoint', async (request, reply) => {
-    const { run } = await loadRun(context, request, param(request, 'id'));
+    const { run } = await loadRun(context, request, param(request, 'id'), 'developer');
     const checkpoint = await context.os.runtime.checkpoint(run.id);
     reply.code(201);
     return { checkpoint, run: await reload(context, run.id) };
   });
 
   app.post('/api/runs/:id/fork', async (request, reply) => {
-    const { run } = await loadRun(context, request, param(request, 'id'));
+    const { run } = await loadRun(context, request, param(request, 'id'), 'developer');
     const body = parse(forkRunSchema, request.body ?? {}, 'fork');
     const forked = await context.os.runtime.fork(run.id, {
       ...(body.checkpointId ? { checkpointId: body.checkpointId } : {}),
@@ -180,7 +180,7 @@ export function registerRunRoutes(app: FastifyInstance): void {
   });
 
   app.post('/api/runs/:id/replay', async (request) => {
-    const { run } = await loadRun(context, request, param(request, 'id'));
+    const { run } = await loadRun(context, request, param(request, 'id'), 'developer');
     const body = parse(replayRunSchema, request.body ?? {}, 'replay');
     const report = await context.os.runtime.replay(run.id, {
       ...(body.mode ? { mode: body.mode } : {}),

@@ -7,6 +7,7 @@
  * ```
  */
 export * from './app.js';
+export * from './auth.js';
 export * from './catalog.js';
 export * from './dispatcher.js';
 export * from './errors.js';
@@ -18,3 +19,4 @@ export * from './routes/runs.js';
 export * from './routes/approvals.js';
 export * from './routes/catalog.js';
 export * from './routes/health.js';
+export * from './routes/identity.js';

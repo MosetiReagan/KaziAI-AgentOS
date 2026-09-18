@@ -88,6 +88,8 @@ async function setup(options: { registerAgent?: boolean; agentFile?: boolean } =
     organizationId: 'org_test',
     projectId: 'prj_test',
     dispatcher,
+    // Authentication has its own suite; these tests are about the control plane.
+    auth: { required: false },
   });
   return { api: handle, dispatcher, organizationId: 'org_test', projectId: 'prj_test' };
 }

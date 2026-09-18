@@ -1,8 +1,8 @@
 import type { FastifyRequest } from 'fastify';
-import type { AgentRun, Principal } from '@kazi-ai/agentos-core';
+import type { AgentRun, Principal, Role } from '@kazi-ai/agentos-core';
 import type { DispatchAction } from './dispatcher.js';
 import { conflict, forbidden, notFound } from './errors.js';
-import type { ApiContext } from './types.js';
+import { ROLE_RANK, type ApiContext } from './types.js';
 
 /** A path parameter that must exist; Fastify routing already guarantees it. */
 export function param(request: FastifyRequest, name: string): string {
@@ -25,8 +25,10 @@ export async function scopeFor(
   context: ApiContext,
   request: FastifyRequest,
   requested: RequestedScope = {},
+  minimum: Role = 'viewer',
 ): Promise<{ organizationId: string; projectId: string; principal: Principal }> {
   const principal = await context.principal(request);
+  requireRole(principal, minimum, 'perform this operation');
   const organizationId = requested.organizationId ?? principal.organizationId;
   if (requested.organizationId && requested.organizationId !== principal.organizationId) {
     throw forbidden('A principal may only act inside its own organization', {
@@ -34,6 +36,9 @@ export async function scopeFor(
     });
   }
   const projectId = requested.projectId ?? principal.projectId ?? context.projectId;
+  if (principal.projectId && projectId !== principal.projectId) {
+    throw forbidden('This principal is scoped to another project', { projectId });
+  }
   return { organizationId, projectId, principal };
 }
 
@@ -42,10 +47,17 @@ export async function loadRun(
   context: ApiContext,
   request: FastifyRequest,
   runId: string,
+  minimum: Role = 'viewer',
 ): Promise<{ run: AgentRun; principal: Principal }> {
   const principal = await context.principal(request);
+  requireRole(principal, minimum, 'read runs');
   const run = await context.store.runs.get(runId);
   if (!run || run.organizationId !== principal.organizationId) {
+    throw notFound(`Run ${runId} not found`);
+  }
+  // A project-scoped key sees only its own project; the run might as well not
+  // exist, so the answer is a 404 rather than a hint about another project.
+  if (principal.projectId && run.projectId !== principal.projectId) {
     throw notFound(`Run ${runId} not found`);
   }
   return { run, principal };
@@ -55,6 +67,20 @@ export async function loadRun(
 export function assertProjectAccess(principal: Principal, projectId: string): void {
   if (principal.projectId && principal.projectId !== projectId) {
     throw forbidden('This principal is scoped to another project', { projectId });
+  }
+}
+
+/**
+ * Authorization is a rank comparison, and the check happens before a handler
+ * can touch anything (spec §64). An admin may do anything, a viewer nothing but
+ * read.
+ */
+export function requireRole(principal: Principal, minimum: Role, what: string): void {
+  if (ROLE_RANK[principal.role] < ROLE_RANK[minimum]) {
+    throw forbidden(`Role ${principal.role} may not ${what}`, {
+      required: minimum,
+      actual: principal.role,
+    });
   }
 }
 

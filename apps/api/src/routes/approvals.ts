@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { JsonValue } from '@kazi-ai/agentos-core';
 import { parse, approvalDecisionSchema } from '../schemas.js';
-import { dispatchRun, param } from '../http.js';
+import { dispatchRun, param, requireRole } from '../http.js';
 import { badRequest, notFound } from '../errors.js';
 import type { ApiContext } from '../types.js';
 
@@ -21,6 +21,7 @@ export function registerApprovalRoutes(app: FastifyInstance): void {
 
   app.get('/api/approvals', async (request) => {
     const principal = await context.principal(request);
+    requireRole(principal, 'viewer', 'read approvals');
     const query = parse(listApprovalsSchema, request.query, 'query');
     const items = await context.store.approvals.list({
       organizationId: principal.organizationId,
@@ -32,6 +33,7 @@ export function registerApprovalRoutes(app: FastifyInstance): void {
 
   app.get('/api/approvals/:id', async (request) => {
     const principal = await context.principal(request);
+    requireRole(principal, 'viewer', 'read approvals');
     const approval = await context.store.approvals.get(param(request, 'id'));
     if (!approval || approval.organizationId !== principal.organizationId) {
       throw notFound(`Approval ${param(request, 'id')} not found`);
@@ -58,6 +60,8 @@ async function decide(
   decision: 'approve' | 'deny' | 'modify',
 ): Promise<{ approval: unknown; runId: string }> {
   const principal = await context.principal(request);
+  // Only an operator or an admin may let a risky action through (spec §23).
+  requireRole(principal, 'operator', 'decide approvals');
   const approvalId = param(request, 'id');
   const existing = await context.store.approvals.get(approvalId);
   if (!existing || existing.organizationId !== principal.organizationId) {

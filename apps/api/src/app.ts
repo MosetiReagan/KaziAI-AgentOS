@@ -1,14 +1,16 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import { createAgentOS, type AgentOS } from '@kazi-ai/agentos';
-import type { Logger, Principal } from '@kazi-ai/agentos-core';
+import type { Logger } from '@kazi-ai/agentos-core';
 import type { AgentOSStore } from '@kazi-ai/agentos-persistence';
+import { ApiKeyAuthenticator, localPrincipal } from './auth.js';
 import { AgentCatalog } from './catalog.js';
 import { InProcessDispatcher, type RunDispatcher } from './dispatcher.js';
 import { errorBody, toApiError } from './errors.js';
 import { registerApprovalRoutes } from './routes/approvals.js';
 import { registerCatalogRoutes } from './routes/catalog.js';
 import { registerHealthRoutes } from './routes/health.js';
+import { registerIdentityRoutes } from './routes/identity.js';
 import { registerRunRoutes } from './routes/runs.js';
 import type { ApiContext, ApiOptions } from './types.js';
 
@@ -71,6 +73,7 @@ export async function buildApi(options: ApiOptions = {}): Promise<ApiHandle> {
   registerRunRoutes(app);
   registerApprovalRoutes(app);
   registerCatalogRoutes(app);
+  registerIdentityRoutes(app);
 
   return {
     app,
@@ -116,15 +119,25 @@ export async function createApiContext(options: ApiOptions = {}): Promise<ApiCon
   const dispatcher: RunDispatcher =
     options.dispatcher ?? new InProcessDispatcher(os.runtime, options.logger);
 
-  // Until authentication is configured, every request is served as the local
-  // tenant's admin. This is only safe for a single-operator install.
-  const localPrincipal: Principal = {
-    kind: 'service-account',
-    id: 'local-operator',
+  // Authentication is on unless an operator explicitly turns it off for a
+  // single-tenant local install. Turning it off is a deliberate act, and it is
+  // the only way to get an implicit principal.
+  const authRequired = options.auth?.required ?? readEnv('KZ_API_AUTH') !== 'none';
+  const auth = new ApiKeyAuthenticator({
+    store: os.store,
     organizationId,
     projectId,
-    role: 'admin',
-  };
+    ...(options.auth?.bootstrapKey ?? readEnv('KZ_API_BOOTSTRAP_KEY')
+      ? { bootstrapKey: options.auth?.bootstrapKey ?? readEnv('KZ_API_BOOTSTRAP_KEY') }
+      : {}),
+    ...(options.logger ? { logger: options.logger } : {}),
+  });
+  const bootstrap: { created: boolean; key?: string } =
+    authRequired && (options.auth?.bootstrap ?? readEnv('KZ_API_BOOTSTRAP') !== '0')
+      ? await auth.bootstrap()
+      : { created: false };
+
+  const implicit = localPrincipal(organizationId, projectId);
 
   const context: ApiContext = {
     os,
@@ -134,8 +147,10 @@ export async function createApiContext(options: ApiOptions = {}): Promise<ApiCon
     organizationId,
     projectId,
     options,
+    auth,
+    ...(bootstrap.key ? { bootstrap: { created: bootstrap.created, key: bootstrap.key } } : {}),
     now: () => Date.now(),
-    principal: () => Promise.resolve(localPrincipal),
+    principal: (request) => (authRequired ? auth.authenticate(request) : Promise.resolve(implicit)),
     close: async () => {
       await dispatcher.close?.();
       if (ownsOs) await os.close();
