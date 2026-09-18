@@ -2,11 +2,22 @@ import { createAgentOS, type AgentOS, type AgentOSOptions } from '@kazi-ai/agent
 import { StructuredLogger, type Logger } from '@kazi-ai/agentos-core';
 import { StoreRunQueue, type RunQueue } from './queue.js';
 import { AgentWorker, type WorkerStats } from './worker.js';
+import { startBullMqConsumer } from './bullmq.js';
 import { startWorkerHealthServer } from './health.js';
 
 export interface WorkerAppOptions extends AgentOSOptions {
   os?: AgentOS;
   queue?: RunQueue;
+  /**
+   * Where work comes from: the durable store queue (default, zero extra
+   * services) or BullMQ over Redis (spec §43). `KZ_QUEUE` picks it in the
+   * deployment images so the worker and the API always agree.
+   */
+  queueBackend?: 'store' | 'bullmq';
+  /** Redis connection for `queueBackend: 'bullmq'`. */
+  redisUrl?: string;
+  /** Injected BullMQ module, so the queue wiring is testable without Redis. */
+  bullMqModule?: import('./bullmq.js').BullMqModule;
   concurrency?: number;
   pollIntervalMs?: number;
   staleClaimMs?: number;
@@ -68,7 +79,19 @@ export async function startWorker(options: WorkerAppOptions = {}): Promise<Start
         });
   void health;
 
-  worker.start();
+  let consumer: { close(): Promise<void> } | undefined;
+  if ((options.queueBackend ?? 'store') === 'bullmq') {
+    consumer = await startBullMqConsumer({
+      worker,
+      ...(options.redisUrl === undefined ? {} : { redisUrl: options.redisUrl }),
+      ...(options.bullMqModule === undefined ? {} : { module: options.bullMqModule }),
+      ...(options.concurrency === undefined ? {} : { concurrency: options.concurrency }),
+      ...(options.logger === undefined ? {} : { logger: options.logger }),
+    });
+    worker.beginServing();
+  } else {
+    worker.start();
+  }
 
   return {
     worker,
@@ -77,6 +100,8 @@ export async function startWorker(options: WorkerAppOptions = {}): Promise<Start
     stats: () => worker.statsSnapshot(),
     ...(health ? { url: health.url } : {}),
     async stop() {
+      // Stop pulling, drain what is already running, then close the store.
+      await consumer?.close();
       await worker.stop();
       await health?.close();
       if (ownsOs) await os.close();

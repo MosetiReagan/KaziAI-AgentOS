@@ -1,3 +1,4 @@
+export * from './options-from-env.js';
 /**
  * `@kazi-ai/agentos` — the KaziAI AgentOS SDK.
  *

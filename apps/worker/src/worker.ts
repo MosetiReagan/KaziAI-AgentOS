@@ -109,6 +109,24 @@ export class AgentWorker {
     this.loop = this.runLoop();
   }
 
+  /**
+   * Serve items pushed by an external queue instead of polling the store
+   * (spec §43/§44). The worker is still the thing that knows about
+   * concurrency, shutdown and in-flight work; only the source of items moves.
+   */
+  beginServing(): void {
+    if (this.running) return;
+    this.running = true;
+    this.startedAt = this.startedAt ?? Date.now();
+    this.logger.info('worker serving an external queue', { workerId: this.workerId });
+  }
+
+  /** Track and run one item, so external queues share shutdown accounting. */
+  async executeClaimed(item: QueuedRun): Promise<void> {
+    if (this.inFlight.has(item.runId)) return;
+    return this.track(item);
+  }
+
   /** One pass: claim up to the free capacity and execute what was claimed. */
   async tick(): Promise<number> {
     this.lastTickAt = Date.now();
@@ -189,11 +207,12 @@ export class AgentWorker {
     }
   }
 
-  private track(item: QueuedRun): void {
+  private track(item: QueuedRun): Promise<void> {
     const promise = this.executeItem(item).finally(() => {
       this.inFlight.delete(item.runId);
     });
     this.inFlight.set(item.runId, promise);
+    return promise;
   }
 
   /** Execute one claimed run. Public so a queue that owns its own retries

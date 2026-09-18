@@ -8,6 +8,7 @@ import { FakeModelProvider } from '@kazi-ai/agentos-providers';
 import { buildApi, type ApiHandle } from '@kazi-ai/agentos-api';
 import { AgentWorker } from '../src/worker.js';
 import { StoreRunQueue } from '../src/queue.js';
+import { startWorker } from '../src/server.js';
 
 let api: ApiHandle | undefined;
 let os: AgentOS | undefined;
@@ -93,5 +94,109 @@ describe('API and worker over one durable store', () => {
     await expect(
       buildApi({ os, organizationId: 'org_test', projectId: 'prj_test', auth: { required: false }, env: { KZ_QUEUE: 'nonsense' } }),
     ).rejects.toThrow(/nonsense/);
+  });
+});
+
+/**
+ * A deployment that puts Redis between the API and the worker must actually
+ * drain from Redis. The worker used to poll the store regardless of
+ * `KZ_QUEUE`, which would have left every BullMQ job unclaimed.
+ */
+describe('the worker drains the queue its deployment selected', () => {
+  it('serves runs delivered by BullMQ and tracks them as in-flight work', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'kazi-bullmq-'));
+    os = await createAgentOS({
+      dataDir: dir,
+      organizationId: 'org_test',
+      projectId: 'prj_test',
+      providersFromEnv: false,
+      providers: [
+        new FakeModelProvider({
+          turns: [{ text: 'done' }],
+          onExhausted: { text: 'done' },
+        }),
+      ],
+      logger: new NullLogger(),
+    });
+    await os
+      .agent({ id: 'developer', model: { provider: 'fake', model: 'fake-1' }, tools: ['filesystem'] })
+      .register();
+
+    const processed: string[] = [];
+    let closed = false;
+    const processor = { current: undefined as ((job: { data: unknown }) => Promise<void>) | undefined };
+    const bullMqModule = {
+      Queue: class {
+        async add(): Promise<{ id: string }> {
+          return { id: 'job' };
+        }
+        async getJobCounts(): Promise<Record<string, number>> {
+          return {};
+        }
+        async close(): Promise<void> {}
+      },
+      Worker: class {
+        constructor(_name: string, handler: (job: { data: unknown }) => Promise<void>) {
+          processor.current = handler;
+        }
+        on(): void {}
+        async close(): Promise<void> {
+          closed = true;
+        }
+      },
+    };
+
+    const started = await startWorker({
+      os,
+      queueBackend: 'bullmq',
+      bullMqModule,
+      logger: new NullLogger(),
+      // No health server: this test is about queue ownership.
+      health: false,
+      concurrency: 1,
+    });
+
+    expect(started.worker.isRunning).toBe(true);
+    expect(started.worker.statsSnapshot().running).toBe(true);
+
+    const run = await os.runtime.createRun({
+      goal: 'Do nothing',
+      agentId: 'developer',
+      organizationId: 'org_test',
+      projectId: 'prj_test',
+      config: {
+        agentId: 'developer',
+        model: 'fake-1',
+        provider: 'fake',
+        tools: ['filesystem.read'],
+        limits: {},
+        permissions: { filesystem: { read: true } },
+        memoryEnabled: false,
+        planningEnabled: false,
+        verificationEnabled: false,
+        recoveryEnabled: false,
+      },
+      limits: {},
+      permissions: { filesystem: { read: true } },
+      metadata: {},
+    });
+    void run;
+
+    await processor.current?.({
+      data: {
+        runId: run.id,
+        organizationId: 'org_test',
+        projectId: 'prj_test',
+        action: 'start',
+        requestedAt: Date.now(),
+      },
+    });
+    processed.push(run.id);
+    // The job the queue delivered really ran to completion through the worker.
+    expect((await os.runtime.getRun(run.id)).status).toBe('COMPLETED');
+
+    await started.stop();
+    expect(closed).toBe(true);
+    expect(processed).toEqual([run.id]);
   });
 });

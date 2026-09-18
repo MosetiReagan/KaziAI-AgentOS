@@ -130,7 +130,9 @@ export async function startBullMqConsumer(
         claimedAt: Date.now(),
         claimedBy: 'bullmq',
       };
-      await options.worker.executeItem(item);
+      // Route through the worker's own accounting so graceful shutdown still
+      // waits for in-flight runs, whichever queue delivered them (spec §84).
+      await options.worker.executeClaimed(item);
     },
     { ...connectionOptions(options), concurrency: options.concurrency ?? 2 },
   );
@@ -143,8 +145,9 @@ export async function startBullMqConsumer(
   });
   return {
     async close() {
+      // Stop pulling first; the caller owns the worker's own drain so the two
+      // cannot deadlock waiting on each other.
       await consumer.close();
-      await options.worker.stop();
     },
   };
 }
