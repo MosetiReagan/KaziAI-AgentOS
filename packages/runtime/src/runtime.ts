@@ -53,7 +53,12 @@ import {
   type EnvironmentProviderConfig,
   type ToolRegistry,
 } from '@kazi-ai/agentos-tools';
-import { ApprovalManager, DefaultPolicyEngine, RiskClassifier } from '@kazi-ai/agentos-policies';
+import {
+  ApprovalManager,
+  DEFAULT_RULES,
+  DefaultPolicyEngine,
+  RiskClassifier,
+} from '@kazi-ai/agentos-policies';
 import { ContextManager } from '@kazi-ai/agentos-context';
 import { MemoryManager } from '@kazi-ai/agentos-memory';
 import { CheckpointManager, serializeState, type CheckpointPolicy } from '@kazi-ai/agentos-checkpoints';
@@ -155,7 +160,12 @@ export class AgentOSRuntime implements AgentRuntime {
     this.logger = options.logger ?? new NullLogger();
     this.now = options.now ?? (() => Date.now());
     this.store = options.store ?? (undefined as unknown as AgentOSStore);
-    this.providers = options.providers;    this.policies = options.policies ?? new DefaultPolicyEngine({ classifier: this.defaultClassifier() });
+    this.providers = options.providers;    // The documented defaults are always in force unless an operator replaces
+    // the engine outright: force-pushing, deleting production data and pushing
+    // to a remote are not merely discouraged, they are policy (spec §22).
+    this.policies =
+      options.policies ??
+      new DefaultPolicyEngine({ classifier: this.defaultClassifier(), rules: DEFAULT_RULES });
     this.recorder = options.recorder ?? new InMemorySpanRecorder();
     this.spansBuffer = this.recorder;
     this.spans = options.spans ?? new SpanFactory(this.spansBuffer, this.now);

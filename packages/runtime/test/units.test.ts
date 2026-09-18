@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   InMemoryEventBus,
+  newActionId,
   newRunId,
   type AgentRun,
   type AgentTool,
@@ -312,5 +313,48 @@ describe('custom tools', () => {
       },
     };
     expect(() => harness!.runtime.tools.register(bad)).toThrow(/Invalid tool id/);
+  });
+});
+describe('default policy', () => {
+  it('applies the documented rules unless an operator replaces the engine', async () => {
+    harness = await createHarness();
+    const context = { runId: 'run_1', agentId: 'test-agent', organizationId: 'org_test', projectId: 'prj_test' };
+    const evaluate = (toolId: string, args: Record<string, unknown>): Promise<{ outcome: string; ruleId: string }> =>
+      harness!.runtime.policies.evaluate(
+        {
+          id: newActionId(),
+          runId: 'run_1',
+          toolId,
+          arguments: args as never,
+          idempotencyKey: 'idem_1',
+          idempotency: 'idempotent',
+          status: 'pending',
+          createdAt: 0,
+          attempt: 1,
+        },
+        context as never,
+      );
+
+    // Force-pushing is denied outright.
+    const forcePush = await evaluate('terminal.exec', { command: 'git push --force origin main' });
+    expect(forcePush.outcome).toBe('DENY');
+    expect(forcePush.ruleId).toBe('deny.terminal.force-push');
+
+    // A normal push needs a human.
+    const push = await evaluate('git', { operation: 'push' });
+    expect(push.outcome).toBe('REQUIRE_APPROVAL');
+    expect(push.ruleId).toBe('require-approval.git.push');
+
+    // Deleting production data needs a human; deleting a scratch file does not.
+    const prod = await evaluate('filesystem.delete', { path: '/srv/production/orders.json' });
+    expect(prod.outcome).toBe('REQUIRE_APPROVAL');
+    const scratch = await evaluate('filesystem.delete', { path: 'tmp/scratch.json' });
+    expect(scratch.outcome).not.toBe('DENY');
+  });
+
+  it('leaves an operator-supplied engine exactly as supplied', async () => {
+    const engine = new DefaultPolicyEngine({ defaultOutcome: 'ALLOW' });
+    harness = await createHarness({ runtime: { policies: engine } });
+    expect(harness.runtime.policies.list()).toHaveLength(0);
   });
 });

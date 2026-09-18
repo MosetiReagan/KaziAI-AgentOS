@@ -21,6 +21,7 @@ import {
 } from '@kazi-ai/agentos-tools';
 import {
   ApprovalManager,
+  DEFAULT_RULES,
   DefaultPolicyEngine,
   RiskClassifier,
   type RiskRule,
@@ -142,12 +143,16 @@ export class AgentOS {
     const tools = new DefaultToolRegistry(toolsList);
     for (const tool of options.tools ?? []) tools.override(tool);
 
+    // The documented default policies are in force unless the caller brings
+    // its own engine (spec §22); a tool's declared risk is a floor that those
+    // rules can only raise.
     const policies =
       options.policies ??
       new DefaultPolicyEngine({
         classifier: new RiskClassifier(options.policyRules, undefined, {
           toolRisk: (toolId) => tools.get(toolId)?.risk,
         }),
+        rules: DEFAULT_RULES,
       });
 
     // Per-agent components are resolved through these maps, so calling
