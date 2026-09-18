@@ -12,6 +12,7 @@ import { registerCatalogRoutes } from './routes/catalog.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { registerIdentityRoutes } from './routes/identity.js';
 import { registerRunRoutes } from './routes/runs.js';
+import { registerStreamRoutes } from './routes/stream.js';
 import type { ApiContext, ApiOptions } from './types.js';
 
 export interface ApiHandle {
@@ -74,6 +75,7 @@ export async function buildApi(options: ApiOptions = {}): Promise<ApiHandle> {
   registerApprovalRoutes(app);
   registerCatalogRoutes(app);
   registerIdentityRoutes(app);
+  registerStreamRoutes(app);
 
   return {
     app,

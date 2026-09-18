@@ -12,6 +12,7 @@ export * from './catalog.js';
 export * from './dispatcher.js';
 export * from './errors.js';
 export * from './http.js';
+export { registerStreamRoutes } from './routes/stream.js';
 export * from './schemas.js';
 export * from './server.js';
 export * from './types.js';
