@@ -155,15 +155,21 @@ export class AgentOSRuntime implements AgentRuntime {
     this.logger = options.logger ?? new NullLogger();
     this.now = options.now ?? (() => Date.now());
     this.store = options.store ?? (undefined as unknown as AgentOSStore);
-    this.providers = options.providers;
-    this.policies = options.policies ?? new DefaultPolicyEngine({ classifier: this.defaultClassifier() });
+    this.providers = options.providers;    this.policies = options.policies ?? new DefaultPolicyEngine({ classifier: this.defaultClassifier() });
     this.recorder = options.recorder ?? new InMemorySpanRecorder();
     this.spansBuffer = this.recorder;
     this.spans = options.spans ?? new SpanFactory(this.spansBuffer, this.now);
     this.contextManager = options.context ?? new ContextManager({ logger: this.logger });
     if (options.memory) this.memory = options.memory;
     this.approvals = options.approvals ?? new ApprovalManager({ store: this.store.approvals });
-    this.agents = options.agents ?? new AgentRegistry({ logger: this.logger });
+    this.agents =
+      options.agents ??
+      new AgentRegistry({
+        // Definitions are durable: another worker, or this one after a restart,
+        // must be able to resolve the agent a queued run was created against.
+        ...(options.store ? { store: options.store.agentDefinitions } : {}),
+        logger: this.logger,
+      });
     this.backpressure = new Backpressure(options.backpressure ?? {}, this.store, this.logger);
     this.environmentProvider = options.environment;
     this.secrets = normalizeSecrets(options.secrets);

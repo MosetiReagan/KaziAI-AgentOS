@@ -205,3 +205,34 @@ describe('Agent SDK', () => {
     expect((await agent.getRun(run.id)).status).toBe('CANCELLED');
   });
 });
+
+describe('agent definition durability', () => {
+  it('persists a registered definition so it resolves after a restart', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'kazi-defs-'));
+    const options = {
+      dataDir,
+      organizationId: 'org_test',
+      projectId: 'prj_test',
+      providersFromEnv: false,
+      providers: [new FakeModelProvider({ turns: [], onExhausted: { text: 'done' } })],
+      logger: new NullLogger(),
+    };
+    const first = await createAgentOS(options);
+    await first
+      .agent({ id: 'developer', version: '1.2.0', model: { provider: 'fake', model: 'fake-1' } })
+      .register();
+    await first.close();
+
+    const second = await createAgentOS(options);
+    try {
+      const records = await second.store.agentDefinitions.list('org_test', 'prj_test');
+      expect(records.map((record) => `${record.id}@${record.version}`)).toContain('developer@1.2.0');
+      expect(records[0]?.name).toBe('developer');
+      const resolved = await second.runtime.agents.get('org_test', 'developer');
+      expect(resolved.version).toBe('1.2.0');
+    } finally {
+      await second.close();
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+});

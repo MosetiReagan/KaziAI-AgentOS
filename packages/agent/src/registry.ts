@@ -75,7 +75,9 @@ export class AgentRegistry {
     }
     this.memory.set(AgentRegistry.key(input.organizationId, definition.id, definition.version), definition);
     await this.store.save({
-      id: `${input.organizationId}:${definition.id}@${definition.version}`,
+      // The record's id is the agent id; (organization, id, version) is the
+      // natural key, and the store keeps one row per version.
+      id: definition.id,
       organizationId: input.organizationId,
       projectId: input.projectId,
       version: definition.version,

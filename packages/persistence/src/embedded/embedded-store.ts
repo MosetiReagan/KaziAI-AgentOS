@@ -74,7 +74,7 @@ export class EmbeddedStore implements AgentOSStore {
   private readonly recoveryLog: JsonlAppendLog<RecoveryAttemptRecord>;
   private readonly invocationLog: JsonlAppendLog<ToolInvocationRecord>;
   private readonly policyDecisionLog: JsonlAppendLog<PolicyDecisionRecord>;
-  private readonly agentDefinitionLog: JsonlLog<AgentDefinitionRecord>;
+  private readonly agentDefinitionLog: JsonlLog<{ id: string; record: AgentDefinitionRecord }>;
   private readonly policyDefinitionLog: JsonlLog<PolicyDefinitionRecord>;
   private readonly organizationLog: JsonlLog<Organization>;
   private readonly projectLog: JsonlLog<Project>;
@@ -110,7 +110,9 @@ export class EmbeddedStore implements AgentOSStore {
     this.recoveryLog = new JsonlAppendLog<RecoveryAttemptRecord>(opts('recoveries'));
     this.invocationLog = new JsonlAppendLog<ToolInvocationRecord>(opts('invocations'));
     this.policyDecisionLog = new JsonlAppendLog<PolicyDecisionRecord>(opts('policy-decisions'));
-    this.agentDefinitionLog = new JsonlLog<AgentDefinitionRecord>(opts('agent-definitions'));
+    this.agentDefinitionLog = new JsonlLog<{ id: string; record: AgentDefinitionRecord }>(
+      opts('agent-definitions'),
+    );
     this.policyDefinitionLog = new JsonlLog<PolicyDefinitionRecord>(opts('policy-definitions'));
     this.organizationLog = new JsonlLog<Organization>(opts('organizations'));
     this.projectLog = new JsonlLog<Project>(opts('projects'));
@@ -474,24 +476,40 @@ export class EmbeddedStore implements AgentOSStore {
 
   readonly agentDefinitions = {
     save: async (definition: AgentDefinitionRecord): Promise<void> => {
-      this.agentDefinitionLog.put(definition);
+      // Versions are immutable rows: the key is id@version, not id, so a new
+      // version never overwrites the definition an old run was created with.
+      this.agentDefinitionLog.put({
+        id: `${definition.id}@${definition.version}`,
+        record: definition,
+      });
     },
-    get: async (organizationId: string, agentId: string, version?: string): Promise<AgentDefinitionRecord | undefined> => {
-      const matches = this.agentDefinitionLog.filter(
-        (definition) =>
-          definition.organizationId === organizationId &&
-          definition.id === agentId &&
-          (version === undefined || definition.version === version),
-      );
-      return matches.sort((left, right) => right.createdAt - left.createdAt)[0];
-    },
-    list: async (organizationId: string, projectId?: string): Promise<AgentDefinitionRecord[]> =>
-      this.agentDefinitionLog
+    get: async (
+      organizationId: string,
+      agentId: string,
+      version?: string,
+    ): Promise<AgentDefinitionRecord | undefined> => {
+      const matches = this.agentDefinitionLog
+        .all()
+        .map((entry) => entry.record)
         .filter(
           (definition) =>
-            definition.organizationId === organizationId && (projectId === undefined || definition.projectId === projectId),
-        )
-        .sort((left, right) => right.createdAt - left.createdAt),
+            definition.organizationId === organizationId &&
+            definition.id === agentId &&
+            (version === undefined || definition.version === version),
+        );
+      return matches.sort((left, right) => right.createdAt - left.createdAt)[0];
+    },
+    list: async (organizationId: string, projectId?: string): Promise<AgentDefinitionRecord[]> => {
+      const latest = new Map<string, AgentDefinitionRecord>();
+      for (const entry of this.agentDefinitionLog.all()) {
+        const definition = entry.record;
+        if (definition.organizationId !== organizationId) continue;
+        if (projectId !== undefined && definition.projectId !== projectId) continue;
+        const existing = latest.get(definition.id);
+        if (!existing || existing.createdAt <= definition.createdAt) latest.set(definition.id, definition);
+      }
+      return [...latest.values()].sort((left, right) => left.id.localeCompare(right.id));
+    },
   };
 
   readonly policyDefinitions = {

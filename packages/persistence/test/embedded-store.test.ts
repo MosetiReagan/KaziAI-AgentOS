@@ -321,6 +321,37 @@ describe('identity store', () => {
   });
 });
 
+describe('agent definitions', () => {
+  it('keeps one immutable row per version and resolves the latest', async () => {
+    const dir = tempDir();
+    const store = new EmbeddedStore({ dir });
+    await store.init();
+    const base = {
+      id: 'developer',
+      organizationId: 'org_1',
+      projectId: 'prj_1',
+      name: 'developer',
+      source: '{}',
+    };
+    await store.agentDefinitions.save({ ...base, version: '1.0.0', definition: {}, hash: 'a', createdAt: 1 });
+    await store.agentDefinitions.save({ ...base, version: '2.0.0', definition: {}, hash: 'b', createdAt: 2 });
+
+    // The natural key is (organization, agent, version).
+    expect((await store.agentDefinitions.get('org_1', 'developer', '1.0.0'))?.hash).toBe('a');
+    expect((await store.agentDefinitions.get('org_1', 'developer'))?.version).toBe('2.0.0');
+    // Listing collapses versions to the newest one per agent.
+    const listed = await store.agentDefinitions.list('org_1', 'prj_1');
+    expect(listed).toHaveLength(1);
+    expect(listed[0]?.version).toBe('2.0.0');
+    // Nothing leaks across tenants.
+    expect(await store.agentDefinitions.get('org_other', 'developer')).toBeUndefined();
+
+    const reopened = new EmbeddedStore({ dir });
+    await reopened.init();
+    expect((await reopened.agentDefinitions.get('org_1', 'developer', '1.0.0'))?.hash).toBe('a');
+  });
+});
+
 describe('webhook subscriptions', () => {
   it('persists subscriptions per tenant and records deliveries', async () => {
     const dir = tempDir();
