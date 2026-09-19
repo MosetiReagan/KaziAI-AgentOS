@@ -1,22 +1,27 @@
 # KaziAI AgentOS
 
-**AI agents can generate impressive demos. Production agents need a runtime that survives failure.**
-
-**In plain terms:** give an AI a job and AgentOS makes sure it can actually
-finish it — safely. It plans the work, uses real tools (files, terminals, git,
-HTTP, databases), checks its own results, and recovers instead of collapsing when
-something breaks. It cannot exceed its budget, cannot touch files or networks it
-was not granted, and stops to ask a human before anything dangerous. You are not
-trusting the model to behave; the runtime enforces the rules around it.
-
 **The runtime for reliable AI agents.**
 
-In engineering terms: an open-source, provider-independent runtime for executing
-durable, multi-step, tool-using autonomous agents — with checkpointing, crash
-recovery, policy enforcement, budgets, memory, context management, observability
-and evaluation built in rather than bolted on.
+An agent is a loop. When the process running that loop dies, the work dies with it.
 
-It is not a chatbot framework and it is not a wrapper around a model API.
+Everything that matters about an autonomous run lives in the memory of one process
+by default — where it is, what it has already done, what it was about to do. That
+holds up for a demo and falls apart for real work: a deploy that takes forty
+minutes, a migration that runs overnight, a coding task spanning hundreds of tool
+calls. Kill the worker and the run is gone, with no way to tell what executed, what
+didn't, or what a retry would double-execute.
+
+AgentOS takes that state out of the process. A run is durable, resumable state: a
+plan, a context snapshot, an append-only journal of every action, checkpoints you
+can restore, and idempotency keys so a retry never quietly executes twice. When a
+worker dies mid-step, a different worker loads the run and continues from the last
+committed action.
+
+**The model decides what to do. The runtime decides what is allowed, what it costs,
+and what survives a crash.**
+
+It is not a chatbot framework, and it is not a wrapper around a model API:
+providers are adapters, and the runtime is the product.
 
 ```text
                           GOAL
@@ -52,14 +57,12 @@ It is not a chatbot framework and it is not a wrapper around a model API.
             COMPLETE
 ```
 
-## What "runtime" means here
+## What the runtime enforces
 
-Every one of these is implemented, tested, and enforced by something other than
-the model's cooperation:
+Each of these is enforced by the runtime rather than by the model's cooperation:
 
-- **Durable execution** — a run survives a worker being killed mid-step. State,
-  the action journal, events and checkpoints are persisted; worker memory is
-  disposable.
+- **Durable execution** — state, the action journal, events and checkpoints
+  survive a killed worker; nothing important lives in process memory.
 - **Tool control** — every action is authorized before it executes, whatever the
   plan said, and the agent's permissions are intersected into every tool call.
 - **Checkpointing** — resumable points with workspace snapshots, plus restore,
@@ -74,6 +77,11 @@ the model's cooperation:
 - **Observability** — OpenTelemetry traces, an append-only event log and a
   per-run view of what actually happened.
 - **Evaluation** — every run produces measured metrics a benchmark can consume.
+
+The proof is a test, not a paragraph: `tests/e2e/crash-recovery.test.ts` starts a
+run, kills the worker process partway through, starts a *different* worker against
+the same durable store, and asserts the run finishes with the state the first
+worker committed.
 
 ## Install and run
 
