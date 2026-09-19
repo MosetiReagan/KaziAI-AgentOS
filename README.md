@@ -2,15 +2,21 @@
 
 **AI agents can generate impressive demos. Production agents need a runtime that survives failure.**
 
-KaziAI AgentOS is an open-source runtime for building, executing, observing,
-evaluating and recovering autonomous AI agents.
+**In plain terms:** give an AI a job and AgentOS makes sure it can actually
+finish it — safely. It plans the work, uses real tools (files, terminals, git,
+HTTP, databases), checks its own results, and recovers instead of collapsing when
+something breaks. It cannot exceed its budget, cannot touch files or networks it
+was not granted, and stops to ask a human before anything dangerous. You are not
+trusting the model to behave; the runtime enforces the rules around it.
 
 **The runtime for reliable AI agents.**
 
-It is not a chatbot framework and it is not a wrapper around a model API. It is
-the infrastructure that takes a goal, gives an agent controlled access to tools
-and context, executes multi-step work, verifies progress, recovers from failure,
-persists state, enforces policy, and leaves behind a complete auditable trace.
+In engineering terms: an open-source, provider-independent runtime for executing
+durable, multi-step, tool-using autonomous agents — with checkpointing, crash
+recovery, policy enforcement, budgets, memory, context management, observability
+and evaluation built in rather than bolted on.
+
+It is not a chatbot framework and it is not a wrapper around a model API.
 
 ```text
                           GOAL
