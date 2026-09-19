@@ -1,0 +1,36 @@
+{
+  "note": [
+    "The deterministic decision script for the crash-and-resume example.",
+    "Each turn writes one file and then pauses, which leaves a wide enough window",
+    "to kill the worker in the middle of the job. The runtime is what is on trial",
+    "here, not the model."
+  ],
+  "turns": [
+    {
+      "text": "Writing the first file.",
+      "delayMs": 400,
+      "toolCalls": [{ "name": "filesystem.write", "arguments": { "path": "notes/01.txt", "content": "one\n" } }]
+    },
+    {
+      "text": "Writing the second file.",
+      "delayMs": 400,
+      "toolCalls": [{ "name": "filesystem.write", "arguments": { "path": "notes/02.txt", "content": "two\n" } }]
+    },
+    {
+      "text": "Writing the third file.",
+      "delayMs": 400,
+      "toolCalls": [{ "name": "filesystem.write", "arguments": { "path": "notes/03.txt", "content": "three\n" } }]
+    },
+    {
+      "text": "Writing the fourth file.",
+      "delayMs": 400,
+      "toolCalls": [{ "name": "filesystem.write", "arguments": { "path": "notes/04.txt", "content": "four\n" } }]
+    },
+    {
+      "text": "Writing the fifth file.",
+      "delayMs": 400,
+      "toolCalls": [{ "name": "filesystem.write", "arguments": { "path": "notes/05.txt", "content": "five\n" } }]
+    },
+    { "text": "All five files are written." }
+  ]
+}
