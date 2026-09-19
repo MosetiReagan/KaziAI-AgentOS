@@ -2,60 +2,63 @@
 
 **The runtime for reliable AI agents.**
 
-An agent is a loop. When the process running that loop dies, the work dies with it.
+Most agent frameworks keep a run in the memory of the process executing it. Kill
+that process and the run is gone: no record of what executed, what did not, or
+what a retry would run twice. That holds up for a demo and fails for real work —
+a deploy that takes forty minutes, a migration that runs overnight, a coding task
+spanning hundreds of tool calls.
 
-Everything that matters about an autonomous run lives in the memory of one process
-by default — where it is, what it has already done, what it was about to do. That
-holds up for a demo and falls apart for real work: a deploy that takes forty
-minutes, a migration that runs overnight, a coding task spanning hundreds of tool
-calls. Kill the worker and the run is gone, with no way to tell what executed, what
-didn't, or what a retry would double-execute.
+AgentOS keeps the run in a durable store instead. That is the whole claim, and it
+is one command:
 
-AgentOS takes that state out of the process. A run is durable, resumable state: a
-plan, a context snapshot, an append-only journal of every action, checkpoints you
-can restore, and idempotency keys so a retry never quietly executes twice. When a
-worker dies mid-step, a different worker loads the run and continues from the last
-committed action.
-
-**The model decides what to do. The runtime decides what is allowed, what it costs,
-and what survives a crash.**
-
-It is not a chatbot framework, and it is not a wrapper around a model API:
-providers are adapters, and the runtime is the product.
+```bash
+pnpm tsx examples/crash-resume/run.ts
+```
 
 ```text
-                          GOAL
-                            │
-                            ▼
-                     ┌─────────────┐
-                     │  AgentOS    │
-                     └──────┬──────┘
-                            │
-   ┌────────────────────────┼────────────────────────┐
-   │            │           │           │            │
-   ▼            ▼           ▼           ▼            ▼
- CONTEXT       PLAN        ACT       OBSERVE      VERIFY
-               │           │
-               │           ├── policy:  ALLOW / DENY / REQUIRE_APPROVAL
-               │           ├── budget:  steps, tools, tokens, cost, time
-               │           ├── journal: intent → execute → commit
-               │           └── tools:   filesystem, terminal, git, http, mcp
-               │
-               ▼
-            FAILURE
-               │
-         ┌─────▼─────┐
-         │ RECOVERY  │  classify → decide → retry / replan / restore / escalate
-         └─────┬─────┘
-               │
-         ┌─────▼─────┐
-         │CHECKPOINT │  state + context + workspace snapshot
-         └─────┬─────┘
-               │
-            RESUME
-               │
-            COMPLETE
+KaziAI AgentOS — kill a worker mid-run, watch the run survive
+
+goal  Write five files, one per step.
+agent crash-demo   model deterministic replay
+run   run_01M2WN7XJGFMAVKKXET0JGVX75
+
+── worker #1 ───────────────────────────────────────────────
+pid 49018  started
+  committed 3 steps, 3 checkpoints
+  SIGKILL — process 49018 is gone
+
+── what survived the crash ─────────────────────────────────────
+run status        EXECUTING
+steps committed   3
+checkpoints       3
+journal           3 of 3 action(s) committed
+                  filesystem.write  notes/01.txt  succeeded
+                  filesystem.write  notes/02.txt  succeeded
+                  filesystem.write  notes/03.txt  succeeded
+on disk           notes/01.txt notes/02.txt notes/03.txt
+
+── worker #2 ───────────────────────────────────────────────
+pid 49124  started on the same store, with no shared memory
+
+── result ───────────────────────────────────────────────────
+status            COMPLETED
+files written     5 / 5
+steps             6
+tool calls        5
+model calls       6
+checkpoints       5
+
+The worker died. The run did not.
 ```
+
+None of that is staged. The `SIGKILL` is real, the two workers share nothing but
+the store on disk, and the transcript is printed from what is actually persisted.
+`model calls 6` for `5` tool calls and a final answer, so the resumed worker
+continued the conversation rather than re-deciding the earlier steps.
+
+**The model decides what to do. The runtime decides what is allowed, what it costs,
+and what survives a crash.** It is not a chatbot framework, and it is not a wrapper
+around a model API: providers are adapters, and the runtime is the product.
 
 ## What the runtime enforces
 
@@ -148,10 +151,11 @@ kazi-agent run developer-agent --goal "Fix the failing tests in this repository.
 kazi-agent inspect run_01M2...
 ```
 
-## Three examples, three hard problems
+## Four examples, four hard problems
 
 | Example | What it proves |
 | --- | --- |
+| [`examples/crash-resume`](examples/crash-resume) | A worker is killed with `SIGKILL` mid-run and a different worker finishes the job from durable state |
 | [`examples/software-engineering`](examples/software-engineering) | The agent really fixes the code, and the runtime's verifier — not the agent's summary — proves it |
 | [`examples/recovery`](examples/recovery) | A real database lock, a real retry of the same action, and a run that fails loudly when the outage outlasts recovery |
 | [`examples/approvals`](examples/approvals) | A granted permission that still cannot push, because policy sends it to a human |
