@@ -2,7 +2,7 @@
   "name": "kazi-ai-agentos",
   "version": "0.1.0",
   "private": true,
-  "description": "Give an AI a job and let it actually finish it: an open-source, crash-safe runtime for autonomous agents \u2014 budgeted, policy-gated and fully auditable.",
+  "description": "An agent is a loop. When the process running it dies, the work should not. A crash-safe runtime for autonomous AI agents: durable, budgeted, policy-gated, auditable.",
   "license": "Apache-2.0",
   "type": "module",
   "engines": {
